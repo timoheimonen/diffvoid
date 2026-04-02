@@ -183,76 +183,27 @@
     function computeLineDiff(left, right) {
         var leftLines = left.split('\n');
         var rightLines = right.split('\n');
-
-        var lm = leftLines.length;
-        var rm = rightLines.length;
-
-        if (lm === 0 && rm === 0) return { leftLines: [], rightLines: [], diff: [] };
-        if (lm === 0) return { leftLines: [], rightLines: rightLines, diff: rightLines.map(function (_, i) { return { type: 'added', lineIndex: i }; }) };
-        if (rm === 0) return { leftLines: leftLines, rightLines: [], diff: leftLines.map(function (_, i) { return { type: 'missing', lineIndex: i }; }) };
-
-        var dp = [];
-        for (var i = 0; i <= lm; i++) dp[i] = new Uint16Array(rm + 1);
-
-        for (var i = 1; i <= lm; i++) {
-            for (var j = 1; j <= rm; j++) {
-                if (leftLines[i - 1] === rightLines[j - 1]) {
-                    dp[i][j] = dp[i - 1][j - 1] + 1;
-                } else if (dp[i - 1][j] > dp[i][j - 1]) {
-                    dp[i][j] = dp[i - 1][j];
-                } else {
-                    dp[i][j] = dp[i][j - 1];
-                }
-            }
-        }
-
-        var matchedLeft = new Set();
-        var matchedRight = new Set();
-
-        var i = lm, j = rm;
-        while (i > 0 && j > 0) {
-            if (leftLines[i - 1] === rightLines[j - 1]) {
-                matchedLeft.add(i - 1);
-                matchedRight.add(j - 1);
-                i--; j--;
-            } else if (dp[i - 1][j] > dp[i][j - 1]) {
-                i--;
-            } else {
-                j--;
-            }
-        }
-
+        var maxLen = Math.max(leftLines.length, rightLines.length);
         var diff = [];
-        var leftIdx = 0, rightIdx = 0;
-        var leftMissingStart = -1;
 
-        while (leftIdx < lm || rightIdx < rm) {
-            var leftMatched = leftIdx < lm && matchedLeft.has(leftIdx);
-            var rightMatched = rightIdx < rm && matchedRight.has(rightIdx);
+        for (var i = 0; i < maxLen; i++) {
+            var leftLine = i < leftLines.length ? leftLines[i] : null;
+            var rightLine = i < rightLines.length ? rightLines[i] : null;
 
-            if (leftIdx >= lm) {
-                diff.push({ type: 'added', lineIndex: rightIdx });
-                rightIdx++;
-            } else if (rightIdx >= rm) {
-                diff.push({ type: 'missing', lineIndex: leftIdx });
-                leftIdx++;
-            } else if (leftMatched && rightMatched) {
-                diff.push({ type: 'match', leftLineIndex: leftIdx, rightLineIndex: rightIdx });
-                leftIdx++;
-                rightIdx++;
-            } else if (!leftMatched && rightMatched) {
-                var charMatched = computeCharDiff(rightLines[rightIdx], leftLines[leftIdx]);
-                diff.push({ type: 'modified', leftLineIndex: leftIdx, rightLineIndex: rightIdx, chars: buildCharArray(rightLines[rightIdx], charMatched) });
-                leftIdx++;
-                rightIdx++;
-            } else if (leftMatched && !rightMatched) {
-                diff.push({ type: 'missing', lineIndex: leftIdx });
-                leftIdx++;
+            if (leftLine === null) {
+                diff.push({ type: 'added', lineIndex: i });
+            } else if (rightLine === null) {
+                diff.push({ type: 'missing', lineIndex: i });
+            } else if (leftLine === rightLine) {
+                diff.push({ type: 'match', leftLineIndex: i, rightLineIndex: i });
             } else {
-                var charMatched = computeCharDiff(rightLines[rightIdx], leftLines[leftIdx]);
-                diff.push({ type: 'modified', leftLineIndex: leftIdx, rightLineIndex: rightIdx, chars: buildCharArray(rightLines[rightIdx], charMatched) });
-                leftIdx++;
-                rightIdx++;
+                var charMatched = computeCharDiff(rightLine, leftLine);
+                diff.push({
+                    type: 'modified',
+                    leftLineIndex: i,
+                    rightLineIndex: i,
+                    chars: buildCharArray(rightLine, charMatched)
+                });
             }
         }
 
@@ -423,6 +374,7 @@
                 updateEmpty(right);
                 var counter = document.getElementById('mismatch-counter');
                 if (counter) counter.style.display = 'none';
+                resetToDefault();
             });
         }
 
@@ -561,6 +513,74 @@
 
         right.addEventListener('scroll', function () {
             syncScroll(right, left);
+        });
+
+        var divider = document.getElementById('divider');
+        var isDragging = false;
+        var mainEl = document.querySelector('main');
+
+        function resetToDefault() {
+            left.style.width = 'calc(50% - 2.5px)';
+            right.style.width = 'calc(50% - 2.5px)';
+        }
+
+        if (divider) {
+            divider.addEventListener('mousedown', function (e) {
+                isDragging = true;
+                document.body.classList.add('resizing');
+                divider.classList.add('dragging');
+                e.preventDefault();
+            });
+
+            divider.addEventListener('touchstart', function (e) {
+                isDragging = true;
+                document.body.classList.add('resizing');
+                divider.classList.add('dragging');
+                e.preventDefault();
+            }, { passive: false });
+
+            divider.addEventListener('dblclick', function () {
+                resetToDefault();
+            });
+        }
+
+        document.addEventListener('mousemove', function (e) {
+            if (!isDragging) return;
+            var mainRect = mainEl.getBoundingClientRect();
+            var x = e.clientX - mainRect.left;
+            var percent = (x / mainRect.width) * 100;
+            if (percent < 15) percent = 15;
+            if (percent > 85) percent = 85;
+            left.style.width = 'calc(' + percent + '% - 2.5px)';
+            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+        });
+
+        document.addEventListener('touchmove', function (e) {
+            if (!isDragging) return;
+            var touch = e.touches[0];
+            var mainRect = mainEl.getBoundingClientRect();
+            var x = touch.clientX - mainRect.left;
+            var percent = (x / mainRect.width) * 100;
+            if (percent < 15) percent = 15;
+            if (percent > 85) percent = 85;
+            left.style.width = 'calc(' + percent + '% - 2.5px)';
+            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+        }, { passive: false });
+
+        document.addEventListener('mouseup', function () {
+            if (isDragging) {
+                isDragging = false;
+                document.body.classList.remove('resizing');
+                if (divider) divider.classList.remove('dragging');
+            }
+        });
+
+        document.addEventListener('touchend', function () {
+            if (isDragging) {
+                isDragging = false;
+                document.body.classList.remove('resizing');
+                if (divider) divider.classList.remove('dragging');
+            }
         });
 
         if (!left.textContent.trim()) left.innerHTML = '';

@@ -129,7 +129,7 @@
   <main>
     <header>
       <h1>About diffvoid.com</h1>
-      <div class="meta">Version 1.0.2</div>
+      <div class="meta">Version 1.0.3</div>
     </header>
 
     <div class="home">
@@ -144,16 +144,18 @@
       <h2>Key Features</h2>
       <ul>
         <li><strong>Privacy first</strong>: No server uploads, no tracking, no analytics. Everything stays in your browser.</li>
-        <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other hidden Unicode characters that can cause subtle bugs.</li>
-        <li><strong>Line-by-line diff</strong>: Compares text line by line with clear visual indicators for matches, additions, deletions, and modifications.</li>
+        <li><strong>Line-by-line diff</strong>: Compares text line by line — line N on the left is always compared to line N on the right.</li>
         <li><strong>Character-level diff</strong>: Within modified lines, shows exactly which characters differ.</li>
+        <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other hidden Unicode characters that can cause subtle bugs.</li>
+        <li><strong>Adjustable panels</strong>: Drag the center divider to adjust left/right panel widths. Double-click to reset to 50/50.</li>
+        <li><strong>Clear button</strong>: One-click to clear both panels and reset to default view.</li>
         <li><strong>Dark mode</strong>: Toggle between light and dark themes with preference saved locally.</li>
       </ul>
     </section>
 
     <section>
       <h2>How It Works</h2>
-      <p>The tool uses a classic <a href="https://en.wikipedia.org/wiki/Longest_common_subsequence" target="_blank" rel="noopener">Longest Common Subsequence (LCS)</a> algorithm to find the differences between two texts. For larger inputs, it switches to the <a href="https://en.wikipedia.org/wiki/Hirschberg%27s_algorithm" target="_blank" rel="noopener">Hirschberg algorithm</a> to keep memory usage low.</p>
+      <p>The tool uses a simple line-by-line comparison algorithm: line N on the left is compared to line N on the right. If lines are identical, they are marked as matching. If different, a character-level diff highlights the exact differences.</p>
       <p>All computation happens client-side using JavaScript. There is no backend processing your text.</p>
     </section>
 

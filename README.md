@@ -5,19 +5,23 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 ## Features
 
 - **100% Client-Side**: All text comparison happens in your browser. No data is sent to any server.
-- **Character-Level Diff**: Highlights exact character differences between texts using the LCS (Longest Common Subsequence) algorithm.
+- **Line-by-Line Diff**: Compares text line by line with clear visual indicators for matches, additions, deletions, and modifications.
+- **Character-Level Diff**: Highlights exact character differences within modified lines.
 - **Invisible Character Detection**: Automatically highlights invisible Unicode characters (zero-width spaces, non-breaking spaces, soft hyphens, directional marks, etc.) with visual indicators.
+- **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
 ## How to Use
 
-1. Paste text into the left panel ("To this...")
-2. Paste text into the right panel ("From this...")
+1. Paste text into the left panel
+2. Paste text into the right panel
 3. Differences are highlighted automatically:
    - **Green background**: Matching text
-   - **Red background**: Different or added text
-   - **Invisible characters**: Shown as `[ZWSP]`, `|`, `[NBSP]`, `[LRM]`, etc.
+   - **Red background**: Different, added, or deleted text
+   - **Invisible characters**: Shown as `[ZWSP]`, `|`, `[NBSP]`, `[LRM]`, or red boxes for spaces in diffs
+4. Drag the center divider to adjust panel widths
+5. Click the trash icon to clear both panels
 
 ## Invisible Characters Detected
 
@@ -49,10 +53,9 @@ The tool highlights these commonly problematic invisible Unicode characters:
 
 ### Diff Algorithm
 
-Uses a combination of:
-- **Line-level diff**: LCS algorithm for matching lines
-- **Character-level diff**: Detailed character comparison for modified lines
-- **Hirschberg's algorithm**: Memory-efficient O(n) space variant for large inputs (>1M characters)
+Uses a simple line-by-line comparison:
+- **Line-level diff**: Each line N on the left is compared to line N on the right
+- **Character-level diff**: For modified lines, detailed character comparison shows exact differences
 
 ### Browser Compatibility
 
@@ -68,7 +71,7 @@ Works in all modern browsers that support:
 - No third-party tracking
 - Optional: Theme preference stored in localStorage only
 
-See [Privacy Policy](https://diffvoid.com/privacy.html) and [Terms of Service](https://diffvoid.com/tos.html) for details.
+See [Privacy Policy](https://diffvoid.com/privacy.html), [Terms of Service](https://diffvoid.com/tos.html), and [About](https://diffvoid.com/about.html) for details.
 
 ## Development
 
@@ -77,10 +80,13 @@ See [Privacy Policy](https://diffvoid.com/privacy.html) and [Terms of Service](h
 ```
 public/
 ├── index.html      # Main HTML structure
-├── script.js       # Comparison logic and diff algorithms
+├── script.js       # Comparison logic and UI
 ├── style.css       # Styling with CSS variables
+├── favicon.svg     # Site favicon
 ├── tos.html        # Terms of Service
-└── privacy.html    # Privacy Policy
+├── privacy.html    # Privacy Policy
+├── about.html      # About page
+└── sitemap.xml     # Sitemap
 ```
 
 ### Running Locally

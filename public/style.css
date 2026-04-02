@@ -106,8 +106,8 @@ main {
 }
 
 .text-field {
-    flex: 1;
-    width: 50%;
+    flex: none;
+    width: calc(50% - 2.5px);
     height: 100%;
     padding: 1rem 1.5rem;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -116,7 +116,6 @@ main {
     background-color: var(--field-bg);
     color: var(--text-color);
     border: none;
-    border-right: 1px solid var(--border-color);
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;
@@ -136,12 +135,40 @@ main {
     left: 1.5rem;
 }
 
-.text-field:last-child {
-    border-right: none;
-}
-
 .text-field:focus {
     background-color: var(--bg-color);
+}
+
+.divider {
+    flex: none;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: var(--border-color);
+    transition: background-color 0.2s ease, width 0.1s ease;
+    position: relative;
+}
+
+.divider:hover {
+    background-color: var(--border-focus);
+    width: 7px;
+    margin: 0 -1px;
+}
+
+.divider.dragging {
+    background-color: var(--diff-mismatch);
+    width: 7px;
+    margin: 0 -1px;
+}
+
+body.resizing {
+    user-select: none;
+    cursor: col-resize;
+}
+
+body.resizing .text-field,
+body.resizing .diff-gutter {
+    cursor: col-resize;
 }
 
 #theme-toggle {
