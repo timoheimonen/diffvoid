@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy - diffvoid.com</title>
+  <meta name="description"
+    content="Privacy policy for diffvoid.com: no ads, no analytics, all text processing happens locally in your browser.">
+  <link rel="canonical" href="https://diffvoid.com/privacy.html">
+  <style>
+    :root {
+      --bg: #000000;
+      --fg: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.7);
+      --link: rgba(255, 255, 255, 0.92);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: 24px;
+      letter-spacing: -0.2px;
+      margin: 0;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    section {
+      padding: 24px 0;
+      margin: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    section:last-child {
+      border-bottom: none;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin: 0 0 16px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    p {
+      margin: 12px 0;
+      line-height: 1.6;
+    }
+
+    ul {
+      margin: 12px 0 12px 20px;
+      line-height: 1.6;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-color: rgba(128, 128, 128, 0.55);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.95em;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    .home {
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>Privacy Policy</h1>
+      <div class="meta">Effective date: 2026-04-02</div>
+    </header>
+
+    <div class="home">
+      <a href="https://diffvoid.com/">← Back to diffvoid.com</a>
+    </div>
+
+    <section>
+      <p>diffvoid.com is a secure browser-based text comparison tool. <strong>We do not run ads, we do not use analytics, and we do not sell
+          personal data.</strong> Your text never leaves your browser.</p>
+    </section>
+
+    <section>
+      <h2>Summary</h2>
+      <ul>
+        <li><strong>No trackers / analytics</strong>: We do not use third-party analytics scripts, tracking pixels, or
+          advertising beacons.</li>
+        <li><strong>No accounts</strong>: There is no login and no user profile.</li>
+        <li><strong>Local processing only</strong>: All text comparison happens entirely in your browser. Your text is never sent to any server.</li>
+        <li><strong>Optional local storage</strong>: Your theme preference is stored locally in
+          your browser and never sent to a server.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What information we collect</h2>
+      <p><strong>We do not intentionally collect personal information</strong> (such as your name, email address, or
+        precise location) through the diffvoid.com app itself. We also do not collect or store the text you compare.</p>
+    </section>
+
+    <section>
+      <h2>Local device storage</h2>
+      <p>The app stores your preferences <strong>locally in your browser</strong> using Local Storage. The following
+        key is used:</p>
+      <ul>
+        <li><code>diffvoidcom_theme</code> — color theme preference (<code>"dark"</code> or <code>"light"</code>)</li>
+      </ul>
+      <p>This data never leaves your device. You can clear it at any time via your browser's site data settings.</p>
+    </section>
+
+    <section>
+      <h2>Text processing</h2>
+      <p>All text comparison is performed <strong>entirely in your browser</strong> using JavaScript. Your text is never uploaded to, stored on, or processed by any server. This is a core privacy feature of diffvoid.com.</p>
+    </section>
+
+    <section>
+      <h2>Hosting/provider logs</h2>
+      <p>diffvoid.com is hosted on <strong>Cloudflare Pages</strong>. Cloudflare may
+        process <strong>standard server/edge request data</strong> (such as IP address, user-agent, request path,
+        timestamps, and similar operational metadata) in order to deliver the site, protect it from abuse, and operate
+        the service.</p>
+      <p>We do not add trackers on top of that, and we do not use these logs for advertising or selling data.</p>
+    </section>
+
+    <section>
+      <h2>Open source verification</h2>
+      <p>The project is open source, and you can verify the behavior described above in:</p>
+      <ul>
+        <li><code>public/index.html</code> — UI structure</li>
+        <li><code>public/script.js</code> — comparison logic (runs entirely client-side)</li>
+        <li><code>public/style.css</code> — styling</li>
+      </ul>
+      <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
+          rel="noopener">github.com/timoheimonen/diffvoid</a></p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>If you have privacy questions, contact:</p>
+      <ul>
+        <li>Timo Heimonen — <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+
+</html>

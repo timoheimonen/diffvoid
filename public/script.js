@@ -362,7 +362,6 @@
         var left = document.getElementById('input-left');
         var right = document.getElementById('input-right');
         var rendering = false;
-        var timer = null;
 
         function updateEmpty(el) {
             el.classList.toggle('is-empty', !el.textContent.trim());
@@ -400,45 +399,37 @@
             var rightHtml = buildDiffHtml(diffResult);
             var leftHtml = buildLeftPanelHtml(diffResult);
 
-            var focused = document.activeElement === right;
-            var pos = focused ? saveCaret(right) : -1;
-
             rendering = true;
             right.innerHTML = rightHtml;
             left.innerHTML = leftHtml;
             rendering = false;
 
-            if (focused) restoreCaret(right, pos);
             updateEmpty(right);
             updateEmpty(left);
         }
 
-        function scheduleCompare() {
-            clearTimeout(timer);
-            timer = setTimeout(compare, 300);
+        function preventTyping(e) {
+            if (e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
         }
 
-        left.addEventListener('input', function () {
-            updateEmpty(left);
-            scheduleCompare();
-        });
-
-        right.addEventListener('input', function () {
-            if (rendering) return;
-            updateEmpty(right);
-            scheduleCompare();
-        });
+        left.addEventListener('keydown', preventTyping);
+        right.addEventListener('keydown', preventTyping);
 
         left.addEventListener('paste', function (e) {
             e.preventDefault();
             var text = e.clipboardData.getData('text/plain');
-            document.execCommand('insertText', false, text);
+            left.textContent = text;
+            updateEmpty(left);
+            compare();
         });
 
         right.addEventListener('paste', function (e) {
             e.preventDefault();
             var text = e.clipboardData.getData('text/plain');
-            document.execCommand('insertText', false, text);
+            right.textContent = text;
+            updateEmpty(right);
+            compare();
         });
 
         function copyWithoutGutters(e, el) {

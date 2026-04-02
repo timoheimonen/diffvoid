@@ -46,9 +46,43 @@ body {
 
 header {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     padding: 1rem;
     flex-shrink: 0;
+}
+
+header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.header-links {
+    font-size: 10px;
+    display: flex;
+    gap: 8px;
+}
+
+.link-separator {
+    opacity: 0.3;
+}
+
+.header-links a {
+    color: var(--text-color);
+    opacity: 0.5;
+    text-decoration: none;
+}
+
+.header-links a:hover {
+    opacity: 0.8;
 }
 
 main {

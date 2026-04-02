@@ -10,6 +10,14 @@
 
 <body>
     <header>
+        <div class="header-left">
+            <h1>diffvoid.com - your secure place to compare texts</h1>
+            <div class="header-links">
+                <a href="tos.html">Terms of Service</a>
+                <span class="link-separator">|</span>
+                <a href="privacy.html">Privacy</a>
+            </div>
+        </div>
         <button id="theme-toggle" aria-label="Toggle dark mode">
             <svg class="sun-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -30,10 +38,8 @@
         </button>
     </header>
     <main>
-        <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" data-placeholder="To this...">
-        </div>
-        <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
-            data-placeholder="From this..."></div>
+        <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" data-placeholder="Paste text to compare..."></div>
+        <div id="input-right" class="text-field" contenteditable="true" spellcheck="false" data-placeholder="Paste text to compare..."></div>
     </main>
     <script src="script.js"></script>
 </body>
