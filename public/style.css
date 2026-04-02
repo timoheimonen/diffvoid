@@ -95,8 +95,17 @@ header h1 {
     margin: 0 auto;
 }
 
+.mismatch-counter.all-match {
+    color: var(--diff-match);
+    background-color: rgba(22, 163, 74, 0.12);
+}
+
 [data-theme="dark"] .mismatch-counter {
     background-color: rgba(248, 113, 113, 0.12);
+}
+
+[data-theme="dark"] .mismatch-counter.all-match {
+    background-color: rgba(74, 222, 128, 0.12);
 }
 
 main {
@@ -305,21 +314,6 @@ body.resizing .diff-gutter {
     line-height: 1;
 }
 
-.invisible-zwsp {
-    color: var(--diff-mismatch);
-    background-color: rgba(220, 38, 38, 0.15);
-}
-
-.invisible-hair {
-    color: var(--diff-mismatch);
-    background-color: rgba(220, 38, 38, 0.15);
-}
-
-.invisible-nbsp {
-    color: var(--diff-mismatch);
-    background-color: rgba(220, 38, 38, 0.15);
-}
-
 .invisible-zwsp::before {
     content: "|";
 }
@@ -410,50 +404,12 @@ body.resizing .diff-gutter {
     margin: 0 1px;
 }
 
-.invisible-zwsp,
-.invisible-zwnj,
-.invisible-zwj,
-.invisible-hair,
-.invisible-nbsp,
-.invisible-nnbsp,
-.invisible-shy,
-.invisible-ensp,
-.invisible-emsp,
-.invisible-thin,
-.invisible-figure,
-.invisible-punct,
-.invisible-mmsp,
-.invisible-wj,
-.invisible-bom,
-.invisible-ideo,
-.invisible-lrm,
-.invisible-rlm,
-.invisible-mvs,
-.invisible-space {
+[class^="invisible-"]:not(.invisible-char):not(.invisible-regular-space) {
     color: var(--diff-mismatch);
     background-color: rgba(220, 38, 38, 0.15);
 }
 
-[data-theme="dark"] .invisible-zwsp,
-[data-theme="dark"] .invisible-zwnj,
-[data-theme="dark"] .invisible-zwj,
-[data-theme="dark"] .invisible-hair,
-[data-theme="dark"] .invisible-nbsp,
-[data-theme="dark"] .invisible-nnbsp,
-[data-theme="dark"] .invisible-shy,
-[data-theme="dark"] .invisible-ensp,
-[data-theme="dark"] .invisible-emsp,
-[data-theme="dark"] .invisible-thin,
-[data-theme="dark"] .invisible-figure,
-[data-theme="dark"] .invisible-punct,
-[data-theme="dark"] .invisible-mmsp,
-[data-theme="dark"] .invisible-wj,
-[data-theme="dark"] .invisible-bom,
-[data-theme="dark"] .invisible-ideo,
-[data-theme="dark"] .invisible-lrm,
-[data-theme="dark"] .invisible-rlm,
-[data-theme="dark"] .invisible-mvs,
-[data-theme="dark"] .invisible-space {
+[data-theme="dark"] [class^="invisible-"]:not(.invisible-char):not(.invisible-regular-space) {
     color: var(--diff-mismatch);
     background-color: rgba(248, 113, 113, 0.15);
 }

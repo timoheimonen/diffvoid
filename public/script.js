@@ -311,54 +311,6 @@
         return html;
     }
 
-    function getRightLineCount(diffResult) {
-        var count = 0;
-        for (var i = 0; i < diffResult.diff.length; i++) {
-            if (diffResult.diff[i].type !== 'missing') {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    function getLeftLineCount(diffResult) {
-        var count = 0;
-        for (var i = 0; i < diffResult.diff.length; i++) {
-            if (diffResult.diff[i].type !== 'added') {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    function saveCaret(el) {
-        var sel = window.getSelection();
-        if (!sel.rangeCount || !el.contains(sel.focusNode)) return -1;
-        var range = sel.getRangeAt(0).cloneRange();
-        range.selectNodeContents(el);
-        range.setEnd(sel.focusNode, sel.focusOffset);
-        return range.toString().length;
-    }
-
-    function restoreCaret(el, offset) {
-        if (offset < 0) return;
-        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        var pos = 0;
-        while (walker.nextNode()) {
-            var node = walker.currentNode;
-            if (pos + node.length >= offset) {
-                var range = document.createRange();
-                range.setStart(node, offset - pos);
-                range.collapse(true);
-                var sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-                return;
-            }
-            pos += node.length;
-        }
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
         initTheme();
 
@@ -373,7 +325,10 @@
                 updateEmpty(left);
                 updateEmpty(right);
                 var counter = document.getElementById('mismatch-counter');
-                if (counter) counter.style.display = 'none';
+                if (counter) {
+                    counter.style.display = 'none';
+                    counter.classList.remove('all-match');
+                }
                 resetToDefault();
             });
         }
@@ -412,7 +367,10 @@
                 }
                 updateEmpty(right);
                 var counter = document.getElementById('mismatch-counter');
-                if (counter) counter.style.display = 'none';
+                if (counter) {
+                    counter.style.display = 'none';
+                    counter.classList.remove('all-match');
+                }
                 return;
             }
 
@@ -432,9 +390,12 @@
             if (counter) {
                 if (mismatchCount > 0) {
                     counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
+                    counter.classList.remove('all-match');
                     counter.style.display = 'block';
                 } else {
-                    counter.style.display = 'none';
+                    counter.textContent = '100% match';
+                    counter.classList.add('all-match');
+                    counter.style.display = 'block';
                 }
             }
 
