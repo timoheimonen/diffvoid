@@ -414,6 +414,16 @@
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
 
+        var clearBtn = document.getElementById('clear-button');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                left.innerHTML = '';
+                right.innerHTML = '';
+                updateEmpty(left);
+                updateEmpty(right);
+            });
+        }
+
         var left = document.getElementById('input-left');
         var right = document.getElementById('input-right');
         var rendering = false;
