@@ -13,13 +13,15 @@
         localStorage.setItem(STORAGE_KEY, next);
     }
 
-    function renderWithInvisibles(text) {
+    function renderWithInvisibles(text, isMismatch) {
         var result = '';
         for (var i = 0; i < text.length; i++) {
             var char = text[i];
             var code = char.charCodeAt(0);
             
-            if (code === 0x200B) {
+            if (code === 0x0020 && isMismatch) {
+                result += '<span class="invisible-char invisible-regular-space" title="Space (U+0020)"></span>';
+            } else if (code === 0x200B) {
                 result += '<span class="invisible-char invisible-zwsp" title="Zero-width space (U+200B)"></span>';
             } else if (code === 0x200C) {
                 result += '<span class="invisible-char invisible-zwnj" title="Zero-width non-joiner (U+200C)"></span>';
@@ -297,7 +299,7 @@
                         j++;
                     }
                     var cls = match ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + cls + '">' + renderWithInvisibles(segment) + '</span>';
+                    html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                 }
                 html += '</span></div>';
                 lineNum++;
@@ -305,7 +307,7 @@
                 var line = diffResult.rightLines[item.lineIndex];
                 html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(line) + '</span></span>';
+                html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(line, true) + '</span></span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'missing') {

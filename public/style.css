@@ -335,6 +335,16 @@ main {
     content: "[SP]";
 }
 
+.invisible-regular-space {
+    display: inline-block;
+    width: 0.5em;
+    height: 0.9em;
+    background-color: rgba(220, 38, 38, 0.4);
+    border-radius: 1px;
+    vertical-align: middle;
+    margin: 0 1px;
+}
+
 .invisible-zwsp,
 .invisible-zwnj,
 .invisible-zwj,
@@ -381,4 +391,8 @@ main {
 [data-theme="dark"] .invisible-space {
     color: var(--diff-mismatch);
     background-color: rgba(248, 113, 113, 0.15);
+}
+
+[data-theme="dark"] .invisible-regular-space {
+    background-color: rgba(248, 113, 113, 0.5);
 }
