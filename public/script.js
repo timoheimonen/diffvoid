@@ -103,7 +103,7 @@
 
         var mid = Math.floor(m / 2);
         var leftLCS = computeLCSLengths(left.slice(0, mid), right);
-        var rightLCS = computeLCSLengths(left.slice(mid).reverse(), right.reverse());
+        var rightLCS = computeLCSLengths(left.slice(mid).reverse(), right.slice().reverse());
 
         var maxSum = -1, bestJ = 0;
         for (var j = 0; j <= n; j++) {
@@ -139,7 +139,15 @@
         var leftCore = left.slice(prefix, m - suffix);
         var rightCore = right.slice(prefix, n - suffix);
 
-        if (ml * nl <= 1000000) {
+        if (ml * nl > 1000000) {
+            var leftArr = leftCore.split('');
+            var rightArr = rightCore.split('');
+            var charMatched = new Set();
+            hirschberg(leftArr, rightArr, 0, 0, charMatched);
+            for (var idx of charMatched) {
+                matched.add(prefix + idx);
+            }
+        } else {
             var dp = [];
             for (var i = 0; i <= ml; i++) dp[i] = new Uint16Array(nl + 1);
 
@@ -166,46 +174,212 @@
                     j--;
                 }
             }
-        } else {
-            var leftArr = leftCore.split('');
-            var rightArr = rightCore.split('');
-            var charMatched = new Set();
-            hirschberg(leftArr, rightArr, 0, 0, charMatched);
-            for (var idx of charMatched) {
-                matched.add(prefix + idx);
-            }
         }
 
         return matched;
     }
 
 
-    function computeLineDiff(left, right) {
-        var leftLines = left.split('\n');
-        var rightLines = right.split('\n');
-        var maxLen = Math.max(leftLines.length, rightLines.length);
-        var diff = [];
+    function collectLineLcsPairs(leftLines, rightLines, leftOffset, rightOffset, pairs) {
+        var m = leftLines.length;
+        var n = rightLines.length;
+        if (m === 0 || n === 0) return;
 
-        for (var i = 0; i < maxLen; i++) {
-            var leftLine = i < leftLines.length ? leftLines[i] : null;
-            var rightLine = i < rightLines.length ? rightLines[i] : null;
+        if (m === 1) {
+            for (var j = 0; j < n; j++) {
+                if (leftLines[0] === rightLines[j]) {
+                    pairs.push([leftOffset, rightOffset + j]);
+                    return;
+                }
+            }
+            return;
+        }
 
-            if (leftLine === null) {
-                diff.push({ type: 'added', lineIndex: i });
-            } else if (rightLine === null) {
-                diff.push({ type: 'missing', lineIndex: i });
-            } else if (leftLine === rightLine) {
-                diff.push({ type: 'match', leftLineIndex: i, rightLineIndex: i });
-            } else {
-                var charMatched = computeCharDiff(leftLine, rightLine);
+        var mid = Math.floor(m / 2);
+        var leftLcs = computeLCSLengths(leftLines.slice(0, mid), rightLines);
+        var rightLcs = computeLCSLengths(leftLines.slice(mid).reverse(), rightLines.slice().reverse());
+
+        var bestJ = 0;
+        var maxSum = -1;
+        for (var j = 0; j <= n; j++) {
+            var sum = leftLcs[j] + rightLcs[n - j];
+            if (sum > maxSum) {
+                maxSum = sum;
+                bestJ = j;
+            }
+        }
+
+        collectLineLcsPairs(
+            leftLines.slice(0, mid),
+            rightLines.slice(0, bestJ),
+            leftOffset,
+            rightOffset,
+            pairs
+        );
+        collectLineLcsPairs(
+            leftLines.slice(mid),
+            rightLines.slice(bestJ),
+            leftOffset + mid,
+            rightOffset + bestJ,
+            pairs
+        );
+    }
+
+    function getBigrams(text) {
+        var map = Object.create(null);
+        if (text.length < 2) return { map: map, total: 0 };
+        for (var i = 0; i < text.length - 1; i++) {
+            var gram = text[i] + text[i + 1];
+            map[gram] = (map[gram] || 0) + 1;
+        }
+        return { map: map, total: text.length - 1 };
+    }
+
+    function lineSimilarity(leftLine, rightLine) {
+        if (leftLine === rightLine) return 1;
+        if (!leftLine.length || !rightLine.length) return 0;
+
+        var leftLen = leftLine.length;
+        var rightLen = rightLine.length;
+        var maxLen = Math.max(leftLen, rightLen);
+        var minLen = Math.min(leftLen, rightLen);
+        var lengthRatio = minLen / maxLen;
+        if (lengthRatio < 0.4) return 0;
+
+        var prefix = 0;
+        while (prefix < minLen && leftLine[prefix] === rightLine[prefix]) prefix++;
+
+        var suffix = 0;
+        while (
+            suffix < minLen - prefix
+            && leftLine[leftLen - 1 - suffix] === rightLine[rightLen - 1 - suffix]
+        ) {
+            suffix++;
+        }
+
+        var edgeRatio = (prefix + suffix) / maxLen;
+        var leftBigrams = getBigrams(leftLine);
+        var rightBigrams = getBigrams(rightLine);
+        var intersection = 0;
+        for (var gram in leftBigrams.map) {
+            if (rightBigrams.map[gram]) {
+                var leftCount = leftBigrams.map[gram];
+                var rightCount = rightBigrams.map[gram];
+                intersection += leftCount < rightCount ? leftCount : rightCount;
+            }
+        }
+
+        var denominator = leftBigrams.total + rightBigrams.total;
+        var dice = denominator > 0 ? (2 * intersection) / denominator : 0;
+        var weighted = (dice * 0.65) + (edgeRatio * 0.35);
+        return weighted * (0.6 + 0.4 * lengthRatio);
+    }
+
+    function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, diff) {
+        var leftCount = leftEnd - leftStart;
+        var rightCount = rightEnd - rightStart;
+
+        if (leftCount === 0) {
+            for (var ri = rightStart; ri < rightEnd; ri++) {
+                diff.push({ type: 'added', lineIndex: ri });
+            }
+            return;
+        }
+
+        if (rightCount === 0) {
+            for (var li = leftStart; li < leftEnd; li++) {
+                diff.push({ type: 'missing', lineIndex: li });
+            }
+            return;
+        }
+
+        var i = leftStart;
+        var j = rightStart;
+        while (i < leftEnd && j < rightEnd) {
+            var s00 = lineSimilarity(leftLines[i], rightLines[j]);
+            var s01 = j + 1 < rightEnd ? lineSimilarity(leftLines[i], rightLines[j + 1]) : -1;
+            var s10 = i + 1 < leftEnd ? lineSimilarity(leftLines[i + 1], rightLines[j]) : -1;
+
+            if (s00 >= 0.55 && s00 >= s01 && s00 >= s10) {
+                var charMatched = computeCharDiff(leftLines[i], rightLines[j]);
                 diff.push({
                     type: 'modified',
                     leftLineIndex: i,
-                    rightLineIndex: i,
-                    chars: buildCharArray(rightLine, charMatched)
+                    rightLineIndex: j,
+                    chars: buildCharArray(rightLines[j], charMatched)
                 });
+                i++;
+                j++;
+                continue;
+            }
+
+            if (s01 >= 0.55 && s01 > s10) {
+                diff.push({ type: 'added', lineIndex: j });
+                j++;
+                continue;
+            }
+
+            if (s10 >= 0.55) {
+                diff.push({ type: 'missing', lineIndex: i });
+                i++;
+                continue;
+            }
+
+            var leftRemaining = leftEnd - i;
+            var rightRemaining = rightEnd - j;
+            if (rightRemaining > leftRemaining) {
+                diff.push({ type: 'added', lineIndex: j });
+                j++;
+            } else if (leftRemaining > rightRemaining) {
+                diff.push({ type: 'missing', lineIndex: i });
+                i++;
+            } else {
+                var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
+                diff.push({
+                    type: 'modified',
+                    leftLineIndex: i,
+                    rightLineIndex: j,
+                    chars: buildCharArray(rightLines[j], charMatchedFallback)
+                });
+                i++;
+                j++;
             }
         }
+
+        while (i < leftEnd) {
+            diff.push({ type: 'missing', lineIndex: i });
+            i++;
+        }
+
+        while (j < rightEnd) {
+            diff.push({ type: 'added', lineIndex: j });
+            j++;
+        }
+    }
+
+    function computeLineDiff(left, right) {
+        var leftLines = left.split('\n');
+        var rightLines = right.split('\n');
+        var diff = [];
+        var pairs = [];
+
+        collectLineLcsPairs(leftLines, rightLines, 0, 0, pairs);
+
+        var leftPos = 0;
+        var rightPos = 0;
+        for (var p = 0; p < pairs.length; p++) {
+            var pair = pairs[p];
+            var leftMatch = pair[0];
+            var rightMatch = pair[1];
+
+            appendAlignedRange(leftLines, rightLines, leftPos, leftMatch, rightPos, rightMatch, diff);
+            diff.push({ type: 'match', leftLineIndex: leftMatch, rightLineIndex: rightMatch });
+
+            leftPos = leftMatch + 1;
+            rightPos = rightMatch + 1;
+        }
+
+        appendAlignedRange(leftLines, rightLines, leftPos, leftLines.length, rightPos, rightLines.length, diff);
 
         return { leftLines: leftLines, rightLines: rightLines, diff: diff };
     }
@@ -359,8 +533,8 @@
             var lt = getFieldText(left);
             var rt = getFieldText(right);
 
-            if (!lt.trim() || !rt.trim()) {
-                if (rt.trim() && right.querySelector('.diff-line')) {
+            if (!lt.length || !rt.length) {
+                if (rt.length && right.querySelector('.diff-line')) {
                     rendering = true;
                     right.innerHTML = '';
                     rendering = false;
@@ -393,7 +567,7 @@
                     counter.classList.remove('all-match');
                     counter.style.display = 'block';
                 } else {
-                    counter.textContent = '100% match';
+                    counter.textContent = '100% Match';
                     counter.classList.add('all-match');
                     counter.style.display = 'block';
                 }

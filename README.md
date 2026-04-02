@@ -5,11 +5,12 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 ## Features
 
 - **100% Client-Side**: All text comparison happens in your browser. No data is sent to any server.
-- **Line-by-Line Diff**: Compares text line by line with clear visual indicators for matches, additions, deletions, and modifications.
+- **Line-Aware Diff**: Aligns line sequences with LCS/heuristics so inserted or removed lines do not shift the entire comparison.
 - **Character-Level Diff**: Highlights exact character differences within modified lines.
 - **Invisible Character Detection**: Automatically highlights invisible Unicode characters (zero-width spaces, non-breaking spaces, soft hyphens, directional marks, etc.) with visual indicators.
 - **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
+- **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
 ## How to Use
@@ -53,9 +54,13 @@ The tool highlights these commonly problematic invisible Unicode characters:
 
 ### Diff Algorithm
 
-Uses a simple line-by-line comparison:
-- **Line-level diff**: Each line N on the left is compared to line N on the right
+Uses line sequence alignment with an LCS/heuristic approach:
+- **Line-level diff**: Matching blocks stay aligned even when lines are inserted or deleted
 - **Character-level diff**: For modified lines, detailed character comparison shows exact differences
+
+**Character-level algorithms**:
+- **DP (LCS matrix)**: Dynamic programming approach using a full Longest Common Subsequence matrix. Fast and accurate for typical text sizes.
+- **Hirschberg (linear memory)**: Hirschberg's divide-and-conquer algorithm with O(n) space complexity. Automatically used for very large inputs to reduce memory use.
 
 ### Browser Compatibility
 
@@ -110,4 +115,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Author
 
 Timo Heimonen  <timo.heimonen@proton.me>
-

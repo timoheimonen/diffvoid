@@ -15,7 +15,7 @@
   <main>
     <header>
       <h1>About diffvoid.com</h1>
-      <div class="meta">Version 1.0.3</div>
+      <div class="meta">Version 1.0.5</div>
     </header>
 
     <div class="home">
@@ -30,7 +30,7 @@
       <h2>Key Features</h2>
       <ul>
         <li><strong>Privacy first</strong>: No server uploads, no tracking, no analytics. Everything stays in your browser.</li>
-        <li><strong>Line-by-line diff</strong>: Compares text line by line — line N on the left is always compared to line N on the right.</li>
+        <li><strong>Line-aware diff</strong>: Uses sequence alignment so inserted or removed lines do not shift the whole comparison.</li>
         <li><strong>Character-level diff</strong>: Within modified lines, shows exactly which characters differ.</li>
         <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other hidden Unicode characters that can cause subtle bugs.</li>
         <li><strong>Adjustable panels</strong>: Drag the center divider to adjust left/right panel widths. Double-click to reset to 50/50.</li>
@@ -41,7 +41,13 @@
 
     <section>
       <h2>How It Works</h2>
-      <p>The tool uses a simple line-by-line comparison algorithm: line N on the left is compared to line N on the right. If lines are identical, they are marked as matching. If different, a character-level diff highlights the exact differences.</p>
+      <p>The tool aligns lines using an LCS/heuristic strategy so matching blocks stay aligned even when lines are inserted or removed in the middle.</p>
+      <p>Within aligned modified lines, a character-level diff highlights exact differences.</p>
+      <p>Character-level processing switches automatically between two internal algorithms:</p>
+      <ul>
+        <li><strong>DP (LCS matrix)</strong> for typical text sizes.</li>
+        <li><strong>Hirschberg (linear memory)</strong> for very large inputs.</li>
+      </ul>
       <p>All computation happens client-side using JavaScript. There is no backend processing your text.</p>
     </section>
 
