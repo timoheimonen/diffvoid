@@ -232,7 +232,7 @@
                 lineNum++;
             } else if (item.type === 'modified') {
                 var line = diffResult.rightLines[item.rightLineIndex];
-                html += '<div class="diff-line">';
+                html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content">';
                 var j = 0;
@@ -250,7 +250,7 @@
                 lineNum++;
             } else if (item.type === 'added') {
                 var line = diffResult.rightLines[item.lineIndex];
-                html += '<div class="diff-line">';
+                html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content"><span class="diff-mismatch">' + escapeHtml(line) + '</span></span>';
                 html += '</div>';
@@ -444,7 +444,6 @@
         function copyWithoutGutters(e, el) {
             var sel = window.getSelection();
             if (!sel || sel.isCollapsed) return;
-            // Walk selected nodes; skip .diff-gutter nodes
             var range = sel.getRangeAt(0);
             var fragment = range.cloneContents();
             fragment.querySelectorAll('.diff-gutter').forEach(function (g) { g.remove(); });
@@ -485,6 +484,9 @@
         right.addEventListener('scroll', function () {
             syncScroll(right, left);
         });
+
+        if (!left.textContent.trim()) left.innerHTML = '';
+        if (!right.textContent.trim()) right.innerHTML = '';
 
         updateEmpty(left);
         updateEmpty(right);

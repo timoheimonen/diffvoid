@@ -140,7 +140,6 @@ main {
     transform: scale(1);
 }
 
-/* Diff view */
 .diff-line {
     display: flex;
     min-height: 1.6em;
@@ -174,12 +173,10 @@ main {
 
 .diff-mismatch {
     color: var(--text-color);
-    background-color: var(--diff-missing-bg);
-    border-radius: 2px;
 }
 
 .diff-line-mismatch {
-    background-color: transparent;
+    background-color: var(--diff-missing-bg);
 }
 
 .diff-line-mismatch .diff-gutter {
