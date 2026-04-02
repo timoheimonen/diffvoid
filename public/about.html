@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About - diffvoid.com</title>
+  <meta name="description" content="About diffvoid.com: a secure, private, browser-based text comparison tool.">
+  <link rel="canonical" href="https://diffvoid.com/about.html">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: rgba(0, 0, 0, 0.92);
+      --muted: rgba(0, 0, 0, 0.6);
+      --link: rgba(0, 0, 0, 0.92);
+      --border: rgba(0, 0, 0, 0.1);
+      --code-bg: rgba(0, 0, 0, 0.06);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --bg: #000000;
+      --fg: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.7);
+      --link: rgba(255, 255, 255, 0.92);
+      --border: rgba(255, 255, 255, 0.1);
+      --code-bg: rgba(255, 255, 255, 0.1);
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+      line-height: 1.55;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: 24px;
+      letter-spacing: -0.2px;
+      margin: 0;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    section {
+      padding: 24px 0;
+      margin: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    section:last-child {
+      border-bottom: none;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin: 0 0 16px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    p {
+      margin: 12px 0;
+      line-height: 1.6;
+    }
+
+    ul {
+      margin: 12px 0 12px 20px;
+      line-height: 1.6;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-color: rgba(128, 128, 128, 0.55);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.95em;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--fg);
+    }
+
+    .home {
+      font-size: 13px;
+    }
+  </style>
+  <script>
+    (function () {
+      var saved = localStorage.getItem('diffvoidcom_theme');
+      var theme = saved === 'dark' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>About diffvoid.com</h1>
+      <div class="meta">Version 1.0.2</div>
+    </header>
+
+    <div class="home">
+      <a href="https://diffvoid.com/">← Back to diffvoid.com</a>
+    </div>
+
+    <section>
+      <p>diffvoid.com is a secure, private, browser-based text comparison tool. All processing happens locally in your browser—your text never leaves your device.</p>
+    </section>
+
+    <section>
+      <h2>Key Features</h2>
+      <ul>
+        <li><strong>Privacy first</strong>: No server uploads, no tracking, no analytics. Everything stays in your browser.</li>
+        <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other hidden Unicode characters that can cause subtle bugs.</li>
+        <li><strong>Line-by-line diff</strong>: Compares text line by line with clear visual indicators for matches, additions, deletions, and modifications.</li>
+        <li><strong>Character-level diff</strong>: Within modified lines, shows exactly which characters differ.</li>
+        <li><strong>Dark mode</strong>: Toggle between light and dark themes with preference saved locally.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>How It Works</h2>
+      <p>The tool uses a classic <a href="https://en.wikipedia.org/wiki/Longest_common_subsequence" target="_blank" rel="noopener">Longest Common Subsequence (LCS)</a> algorithm to find the differences between two texts. For larger inputs, it switches to the <a href="https://en.wikipedia.org/wiki/Hirschberg%27s_algorithm" target="_blank" rel="noopener">Hirschberg algorithm</a> to keep memory usage low.</p>
+      <p>All computation happens client-side using JavaScript. There is no backend processing your text.</p>
+    </section>
+
+    <section>
+      <h2>Detected Invisible Characters</h2>
+      <ul>
+        <li>Zero-width space (U+200B)</li>
+        <li>Zero-width non-joiner (U+200C)</li>
+        <li>Zero-width joiner (U+200D)</li>
+        <li>Non-breaking space (U+00A0)</li>
+        <li>Hair space, thin space, en space, em space (U+200A, U+2009, U+2002, U+2003)</li>
+        <li>Soft hyphen (U+00AD)</li>
+        <li>BOM / zero-width no-break space (U+FEFF)</li>
+        <li>And many more Unicode whitespace characters</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Open Source</h2>
+      <p>diffvoid.com is open source. You can inspect the code, verify the privacy claims, or contribute:</p>
+      <p><a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener">github.com/timoheimonen/diffvoid</a></p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>Created by Timo Heimonen</p>
+      <p>Email: <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></p>
+    </section>
+  </main>
+</body>
+
+</html>
