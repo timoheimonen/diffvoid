@@ -85,6 +85,20 @@ header h1 {
     opacity: 0.8;
 }
 
+.mismatch-counter {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--diff-mismatch);
+    background-color: rgba(220, 38, 38, 0.12);
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin: 0 auto;
+}
+
+[data-theme="dark"] .mismatch-counter {
+    background-color: rgba(248, 113, 113, 0.12);
+}
+
 main {
     flex: 1;
     display: flex;

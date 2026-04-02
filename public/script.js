@@ -421,6 +421,8 @@
                 right.innerHTML = '';
                 updateEmpty(left);
                 updateEmpty(right);
+                var counter = document.getElementById('mismatch-counter');
+                if (counter) counter.style.display = 'none';
             });
         }
 
@@ -457,12 +459,32 @@
                     rendering = false;
                 }
                 updateEmpty(right);
+                var counter = document.getElementById('mismatch-counter');
+                if (counter) counter.style.display = 'none';
                 return;
             }
 
             var diffResult = computeLineDiff(lt, rt);
             var rightHtml = buildDiffHtml(diffResult);
             var leftHtml = buildLeftPanelHtml(diffResult);
+
+            var mismatchCount = 0;
+            for (var i = 0; i < diffResult.diff.length; i++) {
+                var type = diffResult.diff[i].type;
+                if (type === 'added' || type === 'missing' || type === 'modified') {
+                    mismatchCount++;
+                }
+            }
+
+            var counter = document.getElementById('mismatch-counter');
+            if (counter) {
+                if (mismatchCount > 0) {
+                    counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
+                    counter.style.display = 'block';
+                } else {
+                    counter.style.display = 'none';
+                }
+            }
 
             rendering = true;
             right.innerHTML = rightHtml;
