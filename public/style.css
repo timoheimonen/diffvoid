@@ -271,7 +271,7 @@ body.resizing .diff-gutter {
 }
 
 .diff-mismatch {
-    color: var(--text-color);
+    color: var(--diff-mismatch);
 }
 
 .diff-line-mismatch {

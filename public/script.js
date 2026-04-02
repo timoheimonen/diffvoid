@@ -18,7 +18,7 @@
         for (var i = 0; i < text.length; i++) {
             var char = text[i];
             var code = char.charCodeAt(0);
-            
+
             if (code === 0x0020 && isMismatch) {
                 result += '<span class="invisible-char invisible-regular-space" title="Space (U+0020)"></span>';
             } else if (code === 0x200B) {
@@ -197,7 +197,7 @@
             } else if (leftLine === rightLine) {
                 diff.push({ type: 'match', leftLineIndex: i, rightLineIndex: i });
             } else {
-                var charMatched = computeCharDiff(rightLine, leftLine);
+                var charMatched = computeCharDiff(leftLine, rightLine);
                 diff.push({
                     type: 'modified',
                     leftLineIndex: i,
