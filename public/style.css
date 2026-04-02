@@ -6,6 +6,11 @@
     --field-bg: #fafafa;
     --border-color: #e0e0e0;
     --border-focus: #999999;
+    --diff-match: #16a34a;
+    --diff-mismatch: #dc2626;
+    --diff-missing-bg: rgba(220, 38, 38, 0.12);
+    --diff-gutter-color: #9ca3af;
+    --placeholder-color: #c0c0c0;
 }
 
 [data-theme="dark"] {
@@ -16,6 +21,11 @@
     --field-bg: #141414;
     --border-color: #2a2a2a;
     --border-focus: #555555;
+    --diff-match: #4ade80;
+    --diff-mismatch: #f87171;
+    --diff-missing-bg: rgba(248, 113, 113, 0.12);
+    --diff-gutter-color: #555555;
+    --placeholder-color: #3a3a3a;
 }
 
 * {
@@ -51,17 +61,31 @@ main {
     flex: 1;
     width: 50%;
     height: 100%;
-    padding: 1.5rem;
-    font-family: inherit;
-    font-size: 14px;
+    padding: 1rem 1.5rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
     line-height: 1.6;
     background-color: var(--field-bg);
     color: var(--text-color);
     border: none;
     border-right: 1px solid var(--border-color);
-    resize: none;
     outline: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: text;
+    position: relative;
     transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.text-field.is-empty::before {
+    content: attr(data-placeholder);
+    color: var(--placeholder-color);
+    pointer-events: none;
+    position: absolute;
+    top: 1rem;
+    left: 1.5rem;
 }
 
 .text-field:last-child {
@@ -114,4 +138,59 @@ main {
 [data-theme="dark"] .moon-icon {
     opacity: 1;
     transform: scale(1);
+}
+
+/* Diff view */
+.diff-line {
+    display: flex;
+    min-height: 1.6em;
+    margin: 0 -1.5rem;
+    padding: 0;
+}
+
+.diff-gutter {
+    flex-shrink: 0;
+    width: 2.8rem;
+    padding: 0 0.4rem 0 0;
+    text-align: right;
+    color: var(--diff-gutter-color);
+    font-size: 11px;
+    border-right: 1px solid var(--border-color);
+    margin-right: 0.6rem;
+    user-select: none;
+    cursor: default;
+}
+
+.diff-content {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.diff-match {
+    color: var(--diff-match);
+}
+
+.diff-mismatch {
+    color: var(--diff-mismatch);
+}
+
+.diff-line-mismatch {
+    background-color: var(--diff-missing-bg);
+}
+
+.diff-line-mismatch .diff-gutter {
+    color: var(--diff-mismatch);
+    opacity: 0.6;
+}
+
+.diff-line-missing {
+    background-color: var(--diff-missing-bg);
+}
+
+.diff-line-missing .diff-content {
+    display: block;
+    width: 100%;
+    min-height: 1.6em;
 }
