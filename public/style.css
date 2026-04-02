@@ -169,15 +169,17 @@ main {
 }
 
 .diff-match {
-    color: var(--diff-match);
+    color: var(--text-color);
 }
 
 .diff-mismatch {
-    color: var(--diff-mismatch);
+    color: var(--text-color);
+    background-color: var(--diff-missing-bg);
+    border-radius: 2px;
 }
 
 .diff-line-mismatch {
-    background-color: var(--diff-missing-bg);
+    background-color: transparent;
 }
 
 .diff-line-mismatch .diff-gutter {

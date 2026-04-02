@@ -13,8 +13,58 @@
         localStorage.setItem(STORAGE_KEY, next);
     }
 
+    function computeLCSLengths(left, right) {
+        var m = left.length, n = right.length;
+        var prev = new Uint16Array(n + 1);
+        var curr = new Uint16Array(n + 1);
+
+        for (var i = 1; i <= m; i++) {
+            for (var j = 1; j <= n; j++) {
+                if (left[i - 1] === right[j - 1]) {
+                    curr[j] = prev[j - 1] + 1;
+                } else if (prev[j] > curr[j - 1]) {
+                    curr[j] = prev[j];
+                } else {
+                    curr[j] = curr[j - 1];
+                }
+            }
+            var tmp = prev; prev = curr; curr = tmp;
+        }
+        return prev;
+    }
+
+    function hirschberg(left, right, leftOffset, rightOffset, matched) {
+        var m = left.length, n = right.length;
+        if (m === 0 || n === 0) return;
+        if (m === 1) {
+            for (var j = 0; j < n; j++) {
+                if (left[0] === right[j]) {
+                    matched.add(rightOffset + j);
+                    return;
+                }
+            }
+            return;
+        }
+
+        var mid = Math.floor(m / 2);
+        var leftLCS = computeLCSLengths(left.slice(0, mid), right);
+        var rightLCS = computeLCSLengths(left.slice(mid).reverse(), right.reverse());
+
+        var maxSum = -1, bestJ = 0;
+        for (var j = 0; j <= n; j++) {
+            var sum = leftLCS[j] + rightLCS[n - j];
+            if (sum > maxSum) {
+                maxSum = sum;
+                bestJ = j;
+            }
+        }
+
+        hirschberg(left.slice(0, mid), right.slice(0, bestJ), leftOffset, rightOffset, matched);
+        hirschberg(left.slice(mid), right.slice(bestJ), leftOffset + mid, rightOffset + bestJ, matched);
+    }
+
     function computeCharDiff(left, right) {
-        const m = left.length, n = right.length;
+        var m = left.length, n = right.length;
 
         var prefix = 0;
         while (prefix < m && prefix < n && left[prefix] === right[prefix]) prefix++;
@@ -31,30 +81,43 @@
         var nl = n - prefix - suffix;
         if (ml === 0 || nl === 0) return matched;
 
-        if (ml * nl > 5000000) return matched;
+        var leftCore = left.slice(prefix, m - suffix);
+        var rightCore = right.slice(prefix, n - suffix);
 
-        var dp = [];
-        for (var i = 0; i <= ml; i++) dp[i] = new Uint16Array(nl + 1);
+        if (ml * nl <= 1000000) {
+            var dp = [];
+            for (var i = 0; i <= ml; i++) dp[i] = new Uint16Array(nl + 1);
 
-        for (var i = 1; i <= ml; i++) {
-            for (var j = 1; j <= nl; j++) {
-                if (left[prefix + i - 1] === right[prefix + j - 1]) {
-                    dp[i][j] = dp[i - 1][j - 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            for (var i = 1; i <= ml; i++) {
+                for (var j = 1; j <= nl; j++) {
+                    if (leftCore[i - 1] === rightCore[j - 1]) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                        dp[i][j] = dp[i - 1][j];
+                    } else {
+                        dp[i][j] = dp[i][j - 1];
+                    }
                 }
             }
-        }
 
-        var i = ml, j = nl;
-        while (i > 0 && j > 0) {
-            if (left[prefix + i - 1] === right[prefix + j - 1]) {
-                matched.add(prefix + j - 1);
-                i--; j--;
-            } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-                i--;
-            } else {
-                j--;
+            var i = ml, j = nl;
+            while (i > 0 && j > 0) {
+                if (leftCore[i - 1] === rightCore[j - 1]) {
+                    matched.add(prefix + j - 1);
+                    i--; j--;
+                } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                    i--;
+                } else {
+                    j--;
+                }
+            }
+        } else {
+            var leftArr = leftCore.split('');
+            var rightArr = rightCore.split('');
+            var charMatched = new Set();
+            hirschberg(leftArr, rightArr, 0, 0, charMatched);
+            for (var idx of charMatched) {
+                matched.add(prefix + idx);
             }
         }
 
@@ -80,8 +143,10 @@
             for (var j = 1; j <= rm; j++) {
                 if (leftLines[i - 1] === rightLines[j - 1]) {
                     dp[i][j] = dp[i - 1][j - 1] + 1;
+                } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                    dp[i][j] = dp[i - 1][j];
                 } else {
-                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                    dp[i][j] = dp[i][j - 1];
                 }
             }
         }
@@ -95,7 +160,7 @@
                 matchedLeft.add(i - 1);
                 matchedRight.add(j - 1);
                 i--; j--;
-            } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            } else if (dp[i - 1][j] > dp[i][j - 1]) {
                 i--;
             } else {
                 j--;
@@ -121,7 +186,7 @@
                 leftIdx++;
                 rightIdx++;
             } else if (!leftMatched && rightMatched) {
-                var charMatched = computeCharDiff(leftLines[leftIdx], rightLines[rightIdx]);
+                var charMatched = computeCharDiff(rightLines[rightIdx], leftLines[leftIdx]);
                 diff.push({ type: 'modified', leftLineIndex: leftIdx, rightLineIndex: rightIdx, chars: buildCharArray(rightLines[rightIdx], charMatched) });
                 leftIdx++;
                 rightIdx++;
@@ -129,7 +194,7 @@
                 diff.push({ type: 'missing', lineIndex: leftIdx });
                 leftIdx++;
             } else {
-                var charMatched = computeCharDiff(leftLines[leftIdx], rightLines[rightIdx]);
+                var charMatched = computeCharDiff(rightLines[rightIdx], leftLines[leftIdx]);
                 diff.push({ type: 'modified', leftLineIndex: leftIdx, rightLineIndex: rightIdx, chars: buildCharArray(rightLines[rightIdx], charMatched) });
                 leftIdx++;
                 rightIdx++;
@@ -167,20 +232,27 @@
                 lineNum++;
             } else if (item.type === 'modified') {
                 var line = diffResult.rightLines[item.rightLineIndex];
-                html += '<div class="diff-line diff-line-mismatch">';
+                html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content diff-mismatch">';
-                for (var j = 0; j < item.chars.length; j++) {
-                    var cls = item.chars[j].match ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + cls + '">' + escapeHtml(item.chars[j].c) + '</span>';
+                html += '<span class="diff-content">';
+                var j = 0;
+                while (j < item.chars.length) {
+                    var match = item.chars[j].match;
+                    var segment = '';
+                    while (j < item.chars.length && item.chars[j].match === match) {
+                        segment += item.chars[j].c;
+                        j++;
+                    }
+                    var cls = match ? 'diff-match' : 'diff-mismatch';
+                    html += '<span class="' + cls + '">' + escapeHtml(segment) + '</span>';
                 }
                 html += '</span></div>';
                 lineNum++;
             } else if (item.type === 'added') {
                 var line = diffResult.rightLines[item.lineIndex];
-                html += '<div class="diff-line diff-line-mismatch">';
+                html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content diff-mismatch">' + escapeHtml(line) + '</span>';
+                html += '<span class="diff-content"><span class="diff-mismatch">' + escapeHtml(line) + '</span></span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'missing') {
@@ -384,8 +456,26 @@
         left.addEventListener('copy', function (e) { copyWithoutGutters(e, left); });
         right.addEventListener('copy', function (e) { copyWithoutGutters(e, right); });
 
+        var isSyncing = false;
+
         function syncScroll(src, dst) {
-            dst.scrollTop = src.scrollTop;
+            if (isSyncing) return;
+            isSyncing = true;
+
+            var srcHeight = src.scrollHeight - src.clientHeight;
+            var dstHeight = dst.scrollHeight - dst.clientHeight;
+
+            if (srcHeight <= 0) {
+                isSyncing = false;
+                return;
+            }
+
+            var scrollRatio = src.scrollTop / srcHeight;
+            dst.scrollTop = scrollRatio * dstHeight;
+
+            setTimeout(function () {
+                isSyncing = false;
+            }, 10);
         }
 
         left.addEventListener('scroll', function () {
