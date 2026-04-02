@@ -13,6 +13,59 @@
         localStorage.setItem(STORAGE_KEY, next);
     }
 
+    function renderWithInvisibles(text) {
+        var result = '';
+        for (var i = 0; i < text.length; i++) {
+            var char = text[i];
+            var code = char.charCodeAt(0);
+            
+            if (code === 0x200B) {
+                result += '<span class="invisible-char invisible-zwsp" title="Zero-width space (U+200B)"></span>';
+            } else if (code === 0x200C) {
+                result += '<span class="invisible-char invisible-zwnj" title="Zero-width non-joiner (U+200C)"></span>';
+            } else if (code === 0x200D) {
+                result += '<span class="invisible-char invisible-zwj" title="Zero-width joiner (U+200D)"></span>';
+            } else if (code === 0x200A) {
+                result += '<span class="invisible-char invisible-hair" title="Hair space (U+200A)"></span>';
+            } else if (code === 0x00A0) {
+                result += '<span class="invisible-char invisible-nbsp" title="Non-breaking space (U+00A0)"></span>';
+            } else if (code === 0x202F) {
+                result += '<span class="invisible-char invisible-nnbsp" title="Narrow no-break space (U+202F)"></span>';
+            } else if (code === 0x00AD) {
+                result += '<span class="invisible-char invisible-shy" title="Soft hyphen (U+00AD)"></span>';
+            } else if (code === 0x2002) {
+                result += '<span class="invisible-char invisible-ensp" title="En space (U+2002)"></span>';
+            } else if (code === 0x2003) {
+                result += '<span class="invisible-char invisible-emsp" title="Em space (U+2003)"></span>';
+            } else if (code === 0x2009) {
+                result += '<span class="invisible-char invisible-thin" title="Thin space (U+2009)"></span>';
+            } else if (code === 0x2007) {
+                result += '<span class="invisible-char invisible-figure" title="Figure space (U+2007)"></span>';
+            } else if (code === 0x2008) {
+                result += '<span class="invisible-char invisible-punct" title="Punctuation space (U+2008)"></span>';
+            } else if (code === 0x205F) {
+                result += '<span class="invisible-char invisible-mmsp" title="Medium mathematical space (U+205F)"></span>';
+            } else if (code === 0x2060) {
+                result += '<span class="invisible-char invisible-wj" title="Word joiner (U+2060)"></span>';
+            } else if (code === 0xFEFF) {
+                result += '<span class="invisible-char invisible-bom" title="Zero-width no-break space / BOM (U+FEFF)"></span>';
+            } else if (code === 0x3000) {
+                result += '<span class="invisible-char invisible-ideo" title="Ideographic space (U+3000)"></span>';
+            } else if (code === 0x200E) {
+                result += '<span class="invisible-char invisible-lrm" title="Left-to-right mark (U+200E)"></span>';
+            } else if (code === 0x200F) {
+                result += '<span class="invisible-char invisible-rlm" title="Right-to-left mark (U+200F)"></span>';
+            } else if (code === 0x180E) {
+                result += '<span class="invisible-char invisible-mvs" title="Mongolian vowel separator (U+180E)"></span>';
+            } else if (code >= 0x2000 && code <= 0x200A) {
+                result += '<span class="invisible-char invisible-space" title="Unicode space (U+' + code.toString(16).toUpperCase() + ')"></span>';
+            } else {
+                result += escapeHtml(char);
+            }
+        }
+        return result;
+    }
+
     function computeLCSLengths(left, right) {
         var m = left.length, n = right.length;
         var prev = new Uint16Array(n + 1);
@@ -227,7 +280,7 @@
                 var line = diffResult.rightLines[item.rightLineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content diff-match">' + escapeHtml(line) + '</span>';
+                html += '<span class="diff-content diff-match">' + renderWithInvisibles(line) + '</span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'modified') {
@@ -244,7 +297,7 @@
                         j++;
                     }
                     var cls = match ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + cls + '">' + escapeHtml(segment) + '</span>';
+                    html += '<span class="' + cls + '">' + renderWithInvisibles(segment) + '</span>';
                 }
                 html += '</span></div>';
                 lineNum++;
@@ -252,7 +305,7 @@
                 var line = diffResult.rightLines[item.lineIndex];
                 html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content"><span class="diff-mismatch">' + escapeHtml(line) + '</span></span>';
+                html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(line) + '</span></span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'missing') {
@@ -277,14 +330,14 @@
                 var line = diffResult.leftLines[item.leftLineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + escapeHtml(line) + '</span>';
+                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'modified') {
                 var line = diffResult.leftLines[item.leftLineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + escapeHtml(line) + '</span>';
+                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'added') {
@@ -296,7 +349,7 @@
                 var line = diffResult.leftLines[item.lineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + escapeHtml(line) + '</span>';
+                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
                 html += '</div>';
                 lineNum++;
             }

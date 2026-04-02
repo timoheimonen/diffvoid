@@ -227,3 +227,158 @@ main {
     width: 100%;
     min-height: 1.6em;
 }
+
+.invisible-char {
+    display: inline-block;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 0 2px;
+    margin: 0 1px;
+    border-radius: 2px;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.invisible-zwsp {
+    color: var(--diff-mismatch);
+    background-color: rgba(220, 38, 38, 0.15);
+}
+
+.invisible-hair {
+    color: var(--diff-mismatch);
+    background-color: rgba(220, 38, 38, 0.15);
+}
+
+.invisible-nbsp {
+    color: var(--diff-mismatch);
+    background-color: rgba(220, 38, 38, 0.15);
+}
+
+.invisible-zwsp::before {
+    content: "|";
+}
+
+.invisible-zwnj::before {
+    content: "[ZWNJ]";
+}
+
+.invisible-zwj::before {
+    content: "[ZWJ]";
+}
+
+.invisible-hair::before {
+    content: "[HS]";
+}
+
+.invisible-nbsp::before {
+    content: "[NBSP]";
+}
+
+.invisible-nnbsp::before {
+    content: "[NNBSP]";
+}
+
+.invisible-shy::before {
+    content: "[SHY]";
+}
+
+.invisible-ensp::before {
+    content: "[EN]";
+}
+
+.invisible-emsp::before {
+    content: "[EM]";
+}
+
+.invisible-thin::before {
+    content: "[THIN]";
+}
+
+.invisible-figure::before {
+    content: "[FIG]";
+}
+
+.invisible-punct::before {
+    content: "[PUNCT]";
+}
+
+.invisible-mmsp::before {
+    content: "[MMSP]";
+}
+
+.invisible-wj::before {
+    content: "[WJ]";
+}
+
+.invisible-bom::before {
+    content: "[BOM]";
+}
+
+.invisible-ideo::before {
+    content: "[IDEO]";
+}
+
+.invisible-lrm::before {
+    content: "[LRM]";
+}
+
+.invisible-rlm::before {
+    content: "[RLM]";
+}
+
+.invisible-mvs::before {
+    content: "[MVS]";
+}
+
+.invisible-space::before {
+    content: "[SP]";
+}
+
+.invisible-zwsp,
+.invisible-zwnj,
+.invisible-zwj,
+.invisible-hair,
+.invisible-nbsp,
+.invisible-nnbsp,
+.invisible-shy,
+.invisible-ensp,
+.invisible-emsp,
+.invisible-thin,
+.invisible-figure,
+.invisible-punct,
+.invisible-mmsp,
+.invisible-wj,
+.invisible-bom,
+.invisible-ideo,
+.invisible-lrm,
+.invisible-rlm,
+.invisible-mvs,
+.invisible-space {
+    color: var(--diff-mismatch);
+    background-color: rgba(220, 38, 38, 0.15);
+}
+
+[data-theme="dark"] .invisible-zwsp,
+[data-theme="dark"] .invisible-zwnj,
+[data-theme="dark"] .invisible-zwj,
+[data-theme="dark"] .invisible-hair,
+[data-theme="dark"] .invisible-nbsp,
+[data-theme="dark"] .invisible-nnbsp,
+[data-theme="dark"] .invisible-shy,
+[data-theme="dark"] .invisible-ensp,
+[data-theme="dark"] .invisible-emsp,
+[data-theme="dark"] .invisible-thin,
+[data-theme="dark"] .invisible-figure,
+[data-theme="dark"] .invisible-punct,
+[data-theme="dark"] .invisible-mmsp,
+[data-theme="dark"] .invisible-wj,
+[data-theme="dark"] .invisible-bom,
+[data-theme="dark"] .invisible-ideo,
+[data-theme="dark"] .invisible-lrm,
+[data-theme="dark"] .invisible-rlm,
+[data-theme="dark"] .invisible-mvs,
+[data-theme="dark"] .invisible-space {
+    color: var(--diff-mismatch);
+    background-color: rgba(248, 113, 113, 0.15);
+}
