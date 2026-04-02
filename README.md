@@ -103,8 +103,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Author
 
-Timo Heimonen - timo.heimonen@proton.me
+Timo Heimonen  <timo.heimonen@proton.me>
 
-## Repository
-
-https://github.com/timoheimonen/diffvoid
