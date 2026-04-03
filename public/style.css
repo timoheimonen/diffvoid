@@ -181,6 +181,10 @@ body.resizing .diff-gutter {
 }
 
 #theme-toggle {
+    position: relative;
+}
+
+.icon-button {
     background: var(--toggle-bg);
     border: none;
     border-radius: 50%;
@@ -194,7 +198,7 @@ body.resizing .diff-gutter {
     transition: background-color 0.2s ease;
 }
 
-#theme-toggle:hover {
+.icon-button:hover {
     background: var(--toggle-hover);
 }
 
@@ -205,21 +209,7 @@ body.resizing .diff-gutter {
 }
 
 #clear-button {
-    background: var(--toggle-bg);
-    border: none;
-    border-radius: 50%;
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--text-color);
-    transition: background-color 0.2s ease;
-}
-
-#clear-button:hover {
-    background: var(--toggle-hover);
+    position: relative;
 }
 
 .sun-icon,
