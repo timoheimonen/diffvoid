@@ -12,6 +12,7 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 - **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
 - **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
+- **Practical Input Size**: Because all comparison runs in your browser, a safe practical limit is around 10,000 lines per side.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
 ## How to Use
