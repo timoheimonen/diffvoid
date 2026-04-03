@@ -8,6 +8,7 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 - **Line-Aware Diff**: Aligns line sequences with LCS/heuristics so inserted or removed lines do not shift the entire comparison.
 - **Character-Level Diff**: Highlights exact character differences within modified lines.
 - **Invisible Character Detection**: Automatically highlights invisible Unicode characters (zero-width spaces, non-breaking spaces, soft hyphens, directional marks, etc.) with visual indicators.
+- **Copy Without Invisible Characters**: When invisible characters are detected, copy buttons appear next to the comparison result. Zero-width characters are removed completely, while special spaces (NBSP, En/Em space, etc.) are replaced with standard spaces to preserve word separation.
 - **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
 - **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
@@ -21,8 +22,11 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
    - **Green background**: Matching text
    - **Red background**: Different, added, or deleted text
    - **Invisible characters**: Shown as `[ZWSP]`, `|`, `[NBSP]`, `[LRM]`, or red boxes for spaces in diffs
-4. Drag the center divider to adjust panel widths
-5. Click the trash icon to clear both panels
+4. When invisible characters are detected, **copy buttons (L/R)** appear next to the mismatch counter:
+   - **Zero-width characters** (like `[ZWSP]`, `[LRM]`) are removed completely
+   - **Special spaces** (like `[NBSP]`, `[EM]`, `[EN]`) are replaced with standard spaces to prevent word merging
+5. Drag the center divider to adjust panel widths
+6. Click the trash icon to clear both panels
 
 ## Invisible Characters Detected
 
