@@ -106,6 +106,54 @@ header h1 {
     background-color: rgba(22, 163, 74, 0.12);
 }
 
+.copy-clean-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 auto;
+}
+
+.copy-clean-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--toggle-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 11px;
+    font-weight: 600;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.copy-clean-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.copy-clean-btn:hover {
+    background: var(--toggle-hover);
+    border-color: var(--border-focus);
+}
+
+.copy-clean-btn svg {
+    stroke: currentColor;
+}
+
+.copy-clean-btn.copy-success {
+    background-color: rgba(22, 163, 74, 0.2);
+    border-color: var(--diff-match);
+    color: var(--diff-match);
+}
+
+[data-theme="dark"] .copy-clean-btn.copy-success {
+    background-color: rgba(74, 222, 128, 0.2);
+}
+
 [data-theme="dark"] .mismatch-counter {
     background-color: rgba(248, 113, 113, 0.12);
 }

@@ -20,7 +20,7 @@
   <main>
     <header>
       <h1>About diffvoid.com</h1>
-      <div class="meta">Version 1.0.6</div>
+      <div class="meta">Version 1.0.7</div>
     </header>
 
     <div class="home">
@@ -42,6 +42,9 @@
         <li><strong>Character-level diff</strong>: Within modified lines, shows exactly which characters differ.</li>
         <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other
           hidden Unicode characters that can cause subtle bugs.</li>
+        <li><strong>Copy without invisible characters</strong>: When invisible characters are detected, copy buttons
+          appear to copy clean text. Zero-width characters are removed completely, while special spaces (NBSP, En/Em
+          space, etc.) are replaced with standard spaces to preserve word separation.</li>
         <li><strong>Adjustable panels</strong>: Drag the center divider to adjust left/right panel widths. Double-click
           to reset to 50/50.</li>
         <li><strong>Clear button</strong>: One-click to clear both panels and reset to default view.</li>

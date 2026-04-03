@@ -15,57 +15,111 @@
         }
     }
 
+    var INVISIBLE_RENDER_META = {
+        0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)' },
+        0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)' },
+        0x180E: { cls: 'invisible-mvs', title: 'Mongolian vowel separator (U+180E)' },
+        0x2002: { cls: 'invisible-ensp', title: 'En space (U+2002)' },
+        0x2003: { cls: 'invisible-emsp', title: 'Em space (U+2003)' },
+        0x2007: { cls: 'invisible-figure', title: 'Figure space (U+2007)' },
+        0x2008: { cls: 'invisible-punct', title: 'Punctuation space (U+2008)' },
+        0x2009: { cls: 'invisible-thin', title: 'Thin space (U+2009)' },
+        0x200A: { cls: 'invisible-hair', title: 'Hair space (U+200A)' },
+        0x200B: { cls: 'invisible-zwsp', title: 'Zero-width space (U+200B)' },
+        0x200C: { cls: 'invisible-zwnj', title: 'Zero-width non-joiner (U+200C)' },
+        0x200D: { cls: 'invisible-zwj', title: 'Zero-width joiner (U+200D)' },
+        0x200E: { cls: 'invisible-lrm', title: 'Left-to-right mark (U+200E)' },
+        0x200F: { cls: 'invisible-rlm', title: 'Right-to-left mark (U+200F)' },
+        0x202F: { cls: 'invisible-nnbsp', title: 'Narrow no-break space (U+202F)' },
+        0x205F: { cls: 'invisible-mmsp', title: 'Medium mathematical space (U+205F)' },
+        0x2060: { cls: 'invisible-wj', title: 'Word joiner (U+2060)' },
+        0x3000: { cls: 'invisible-ideo', title: 'Ideographic space (U+3000)' },
+        0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)' }
+    };
+
+    function renderInvisibleSpan(code, cls, title) {
+        return '<span data-char="&#x' + code.toString(16) + ';" class="invisible-char ' + cls + '" title="' + title + '"></span>';
+    }
+
     function renderWithInvisibles(text, isMismatch) {
         var result = '';
         for (var i = 0; i < text.length; i++) {
             var char = text[i];
             var code = char.charCodeAt(0);
+            var meta = INVISIBLE_RENDER_META[code];
 
             if (code === 0x0020 && isMismatch) {
-                result += '<span class="invisible-char invisible-regular-space" title="Space (U+0020)"></span>';
-            } else if (code === 0x200B) {
-                result += '<span class="invisible-char invisible-zwsp" title="Zero-width space (U+200B)"></span>';
-            } else if (code === 0x200C) {
-                result += '<span class="invisible-char invisible-zwnj" title="Zero-width non-joiner (U+200C)"></span>';
-            } else if (code === 0x200D) {
-                result += '<span class="invisible-char invisible-zwj" title="Zero-width joiner (U+200D)"></span>';
-            } else if (code === 0x200A) {
-                result += '<span class="invisible-char invisible-hair" title="Hair space (U+200A)"></span>';
-            } else if (code === 0x00A0) {
-                result += '<span class="invisible-char invisible-nbsp" title="Non-breaking space (U+00A0)"></span>';
-            } else if (code === 0x202F) {
-                result += '<span class="invisible-char invisible-nnbsp" title="Narrow no-break space (U+202F)"></span>';
-            } else if (code === 0x00AD) {
-                result += '<span class="invisible-char invisible-shy" title="Soft hyphen (U+00AD)"></span>';
-            } else if (code === 0x2002) {
-                result += '<span class="invisible-char invisible-ensp" title="En space (U+2002)"></span>';
-            } else if (code === 0x2003) {
-                result += '<span class="invisible-char invisible-emsp" title="Em space (U+2003)"></span>';
-            } else if (code === 0x2009) {
-                result += '<span class="invisible-char invisible-thin" title="Thin space (U+2009)"></span>';
-            } else if (code === 0x2007) {
-                result += '<span class="invisible-char invisible-figure" title="Figure space (U+2007)"></span>';
-            } else if (code === 0x2008) {
-                result += '<span class="invisible-char invisible-punct" title="Punctuation space (U+2008)"></span>';
-            } else if (code === 0x205F) {
-                result += '<span class="invisible-char invisible-mmsp" title="Medium mathematical space (U+205F)"></span>';
-            } else if (code === 0x2060) {
-                result += '<span class="invisible-char invisible-wj" title="Word joiner (U+2060)"></span>';
-            } else if (code === 0xFEFF) {
-                result += '<span class="invisible-char invisible-bom" title="Zero-width no-break space / BOM (U+FEFF)"></span>';
-            } else if (code === 0x3000) {
-                result += '<span class="invisible-char invisible-ideo" title="Ideographic space (U+3000)"></span>';
-            } else if (code === 0x200E) {
-                result += '<span class="invisible-char invisible-lrm" title="Left-to-right mark (U+200E)"></span>';
-            } else if (code === 0x200F) {
-                result += '<span class="invisible-char invisible-rlm" title="Right-to-left mark (U+200F)"></span>';
-            } else if (code === 0x180E) {
-                result += '<span class="invisible-char invisible-mvs" title="Mongolian vowel separator (U+180E)"></span>';
+                result += renderInvisibleSpan(code, 'invisible-regular-space', 'Space (U+0020)');
+            } else if (meta) {
+                result += renderInvisibleSpan(code, meta.cls, meta.title);
             } else if (code >= 0x2000 && code <= 0x200A) {
-                result += '<span class="invisible-char invisible-space" title="Unicode space (U+' + code.toString(16).toUpperCase() + ')"></span>';
+                result += renderInvisibleSpan(code, 'invisible-space', 'Unicode space (U+' + code.toString(16).toUpperCase() + ')');
             } else {
                 result += escapeHtml(char);
             }
+        }
+        return result;
+    }
+
+    var REMOVE_ON_COPY_CODES = {
+        0x00AD: true,
+        0x180E: true,
+        0x200B: true,
+        0x200C: true,
+        0x200D: true,
+        0x200E: true,
+        0x200F: true,
+        0x2060: true,
+        0xFEFF: true
+    };
+
+    var SPACE_ON_COPY_CODES = {
+        0x00A0: true,
+        0x202F: true,
+        0x2002: true,
+        0x2003: true,
+        0x2004: true,
+        0x2005: true,
+        0x2006: true,
+        0x2007: true,
+        0x2008: true,
+        0x2009: true,
+        0x200A: true,
+        0x205F: true,
+        0x3000: true
+    };
+
+    function isInvisibleCode(code) {
+        return REMOVE_ON_COPY_CODES[code]
+            || SPACE_ON_COPY_CODES[code]
+            || (code >= 0x2000 && code <= 0x200A);
+    }
+
+    function hasInvisibleCharacters(text) {
+        for (var i = 0; i < text.length; i++) {
+            if (isInvisibleCode(text.charCodeAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function stripInvisibleCharacters(text) {
+        var result = '';
+        for (var i = 0; i < text.length; i++) {
+            var char = text[i];
+            var code = char.charCodeAt(0);
+
+            if (REMOVE_ON_COPY_CODES[code]) {
+                continue;
+            }
+
+            if (SPACE_ON_COPY_CODES[code] || (code >= 0x2000 && code <= 0x200B)) {
+                result += ' ';
+                continue;
+            }
+
+            result += char;
         }
         return result;
     }
@@ -475,6 +529,17 @@
         var right = document.getElementById('input-right');
         var rendering = false;
         var counter = document.getElementById('mismatch-counter');
+        var copyCleanLeftBtn = document.getElementById('copy-clean-left');
+        var copyCleanRightBtn = document.getElementById('copy-clean-right');
+
+        function setCopyButtonVisibility(leftText, rightText) {
+            if (copyCleanLeftBtn) {
+                copyCleanLeftBtn.classList.toggle('visible', hasInvisibleCharacters(leftText));
+            }
+            if (copyCleanRightBtn) {
+                copyCleanRightBtn.classList.toggle('visible', hasInvisibleCharacters(rightText));
+            }
+        }
 
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
@@ -487,6 +552,8 @@
                 updateEmpty(left);
                 updateEmpty(right);
                 hideCounter();
+                if (copyCleanLeftBtn) copyCleanLeftBtn.classList.remove('visible');
+                if (copyCleanRightBtn) copyCleanRightBtn.classList.remove('visible');
                 resetToDefault();
             });
         }
@@ -513,6 +580,23 @@
             el.classList.toggle('is-empty', !el.textContent.trim());
         }
 
+        function extractText(node) {
+            var text = '';
+            for (var i = 0; i < node.childNodes.length; i++) {
+                var child = node.childNodes[i];
+                if (child.nodeType === Node.TEXT_NODE) {
+                    text += child.nodeValue;
+                } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    if (child.hasAttribute('data-char')) {
+                        text += child.getAttribute('data-char');
+                    } else {
+                        text += extractText(child);
+                    }
+                }
+            }
+            return text;
+        }
+
         function getFieldText(el) {
             var diffLines = el.querySelectorAll('.diff-line');
             if (diffLines.length === 0) return el.innerText || '';
@@ -521,7 +605,7 @@
                 var gutter = line.querySelector('.diff-gutter');
                 if (gutter && gutter.textContent !== '') {
                     var content = line.querySelector('.diff-content');
-                    parts.push(content ? (content.textContent || '') : '');
+                    parts.push(content ? extractText(content) : '');
                 }
             });
             return parts.join('\n');
@@ -530,6 +614,8 @@
         function compare() {
             var lt = getFieldText(left);
             var rt = getFieldText(right);
+
+            setCopyButtonVisibility(lt, rt);
 
             if (!lt.length || !rt.length) {
                 if (rt.length && right.querySelector('.diff-line')) {
@@ -689,6 +775,59 @@
 
         document.addEventListener('mouseup', stopDragging);
         document.addEventListener('touchend', stopDragging);
+
+        function copyCleanText(side) {
+            var el = side === 'left' ? left : right;
+            var text = getFieldText(el);
+            var cleanText = stripInvisibleCharacters(text);
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(cleanText).then(function () {
+                    showCopyFeedback(side);
+                }).catch(function () {
+                    fallbackCopy(cleanText, side);
+                });
+            } else {
+                fallbackCopy(cleanText, side);
+            }
+        }
+
+        function fallbackCopy(text, side) {
+            var textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showCopyFeedback(side);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function showCopyFeedback(side) {
+            var btn = document.getElementById('copy-clean-' + side);
+            if (!btn) return;
+            btn.classList.add('copy-success');
+            setTimeout(function () {
+                btn.classList.remove('copy-success');
+            }, 1200);
+        }
+
+        if (copyCleanLeftBtn) {
+            copyCleanLeftBtn.addEventListener('click', function () {
+                copyCleanText('left');
+            });
+        }
+
+        if (copyCleanRightBtn) {
+            copyCleanRightBtn.addEventListener('click', function () {
+                copyCleanText('right');
+            });
+        }
 
         if (!left.textContent.trim()) left.innerHTML = '';
         if (!right.textContent.trim()) right.innerHTML = '';
