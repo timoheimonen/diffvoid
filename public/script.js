@@ -1,3 +1,7 @@
+// MIT License
+// Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
+// See LICENSE file for full terms at github.com/timoheimonen/diffvoid
+
 (function () {
     function initTheme() {
         if (window.diffvoidTheme && typeof window.diffvoidTheme.initTheme === 'function') {
