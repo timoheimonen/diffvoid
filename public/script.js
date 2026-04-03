@@ -1,16 +1,14 @@
 (function () {
-    const STORAGE_KEY = 'diffvoidcom_theme';
-
     function initTheme() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
+        if (window.diffvoidTheme && typeof window.diffvoidTheme.initTheme === 'function') {
+            window.diffvoidTheme.initTheme();
+        }
     }
 
     function toggleTheme() {
-        const current = document.documentElement.getAttribute('data-theme');
-        const next = current === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem(STORAGE_KEY, next);
+        if (window.diffvoidTheme && typeof window.diffvoidTheme.toggleTheme === 'function') {
+            window.diffvoidTheme.toggleTheme();
+        }
     }
 
     function renderWithInvisibles(text, isMismatch) {
@@ -391,89 +389,75 @@
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    function buildDiffHtml(diffResult) {
+    function buildPanelHtml(diffResult, side) {
         var html = '';
         var lineNum = 1;
+        var isRight = side === 'right';
 
         for (var i = 0; i < diffResult.diff.length; i++) {
             var item = diffResult.diff[i];
 
             if (item.type === 'match') {
-                var line = diffResult.rightLines[item.rightLineIndex];
+                var line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content diff-match">' + renderWithInvisibles(line) + '</span>';
+                html += '<span class="diff-content';
+                if (isRight) html += ' diff-match';
+                html += '">' + renderWithInvisibles(line) + '</span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'modified') {
-                var line = diffResult.rightLines[item.rightLineIndex];
-                html += '<div class="diff-line diff-line-mismatch">';
+                html += '<div class="diff-line';
+                if (isRight) html += ' diff-line-mismatch';
+                html += '">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content">';
-                var j = 0;
-                while (j < item.chars.length) {
-                    var match = item.chars[j].match;
-                    var segment = '';
-                    while (j < item.chars.length && item.chars[j].match === match) {
-                        segment += item.chars[j].c;
-                        j++;
+                if (isRight) {
+                    var j = 0;
+                    while (j < item.chars.length) {
+                        var match = item.chars[j].match;
+                        var segment = '';
+                        while (j < item.chars.length && item.chars[j].match === match) {
+                            segment += item.chars[j].c;
+                            j++;
+                        }
+                        var cls = match ? 'diff-match' : 'diff-mismatch';
+                        html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                     }
-                    var cls = match ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
+                } else {
+                    html += renderWithInvisibles(diffResult.leftLines[item.leftLineIndex]);
                 }
-                html += '</span></div>';
-                lineNum++;
-            } else if (item.type === 'added') {
-                var line = diffResult.rightLines[item.lineIndex];
-                html += '<div class="diff-line diff-line-mismatch">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(line, true) + '</span></span>';
-                html += '</div>';
-                lineNum++;
-            } else if (item.type === 'missing') {
-                html += '<div class="diff-line diff-line-missing">';
-                html += '<span class="diff-gutter"></span>';
-                html += '<span class="diff-content"></span>';
-                html += '</div>';
-            }
-        }
-
-        return html;
-    }
-
-    function buildLeftPanelHtml(diffResult) {
-        var html = '';
-        var lineNum = 1;
-
-        for (var i = 0; i < diffResult.diff.length; i++) {
-            var item = diffResult.diff[i];
-
-            if (item.type === 'match') {
-                var line = diffResult.leftLines[item.leftLineIndex];
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
-                html += '</div>';
-                lineNum++;
-            } else if (item.type === 'modified') {
-                var line = diffResult.leftLines[item.leftLineIndex];
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
+                html += '</span>';
                 html += '</div>';
                 lineNum++;
             } else if (item.type === 'added') {
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter"></span>';
-                html += '<span class="diff-content"></span>';
-                html += '</div>';
+                if (isRight) {
+                    var addedLine = diffResult.rightLines[item.lineIndex];
+                    html += '<div class="diff-line diff-line-mismatch">';
+                    html += '<span class="diff-gutter">' + lineNum + '</span>';
+                    html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(addedLine, true) + '</span></span>';
+                    html += '</div>';
+                    lineNum++;
+                } else {
+                    html += '<div class="diff-line">';
+                    html += '<span class="diff-gutter"></span>';
+                    html += '<span class="diff-content"></span>';
+                    html += '</div>';
+                }
             } else if (item.type === 'missing') {
-                var line = diffResult.leftLines[item.lineIndex];
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + renderWithInvisibles(line) + '</span>';
-                html += '</div>';
-                lineNum++;
+                if (isRight) {
+                    html += '<div class="diff-line diff-line-missing">';
+                    html += '<span class="diff-gutter"></span>';
+                    html += '<span class="diff-content"></span>';
+                    html += '</div>';
+                } else {
+                    var missingLine = diffResult.leftLines[item.lineIndex];
+                    html += '<div class="diff-line">';
+                    html += '<span class="diff-gutter">' + lineNum + '</span>';
+                    html += '<span class="diff-content">' + renderWithInvisibles(missingLine) + '</span>';
+                    html += '</div>';
+                    lineNum++;
+                }
             }
         }
 
@@ -486,6 +470,7 @@
         var left = document.getElementById('input-left');
         var right = document.getElementById('input-right');
         var rendering = false;
+        var counter = document.getElementById('mismatch-counter');
 
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
@@ -497,13 +482,27 @@
                 right.innerHTML = '';
                 updateEmpty(left);
                 updateEmpty(right);
-                var counter = document.getElementById('mismatch-counter');
-                if (counter) {
-                    counter.style.display = 'none';
-                    counter.classList.remove('all-match');
-                }
+                hideCounter();
                 resetToDefault();
             });
+        }
+
+        function hideCounter() {
+            if (!counter) return;
+            counter.style.display = 'none';
+            counter.classList.remove('all-match');
+        }
+
+        function setCounter(mismatchCount) {
+            if (!counter) return;
+            if (mismatchCount > 0) {
+                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
+                counter.classList.remove('all-match');
+            } else {
+                counter.textContent = '100% Match';
+                counter.classList.add('all-match');
+            }
+            counter.style.display = 'block';
         }
 
         function updateEmpty(el) {
@@ -535,17 +534,13 @@
                     rendering = false;
                 }
                 updateEmpty(right);
-                var counter = document.getElementById('mismatch-counter');
-                if (counter) {
-                    counter.style.display = 'none';
-                    counter.classList.remove('all-match');
-                }
+                hideCounter();
                 return;
             }
 
             var diffResult = computeLineDiff(lt, rt);
-            var rightHtml = buildDiffHtml(diffResult);
-            var leftHtml = buildLeftPanelHtml(diffResult);
+            var rightHtml = buildPanelHtml(diffResult, 'right');
+            var leftHtml = buildPanelHtml(diffResult, 'left');
 
             var mismatchCount = 0;
             for (var i = 0; i < diffResult.diff.length; i++) {
@@ -555,18 +550,7 @@
                 }
             }
 
-            var counter = document.getElementById('mismatch-counter');
-            if (counter) {
-                if (mismatchCount > 0) {
-                    counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
-                    counter.classList.remove('all-match');
-                    counter.style.display = 'block';
-                } else {
-                    counter.textContent = '100% Match';
-                    counter.classList.add('all-match');
-                    counter.style.display = 'block';
-                }
-            }
+            setCounter(mismatchCount);
 
             rendering = true;
             right.innerHTML = rightHtml;
@@ -585,21 +569,18 @@
         left.addEventListener('keydown', preventTyping);
         right.addEventListener('keydown', preventTyping);
 
-        left.addEventListener('paste', function (e) {
-            e.preventDefault();
-            var text = e.clipboardData.getData('text/plain');
-            left.textContent = text;
-            updateEmpty(left);
-            compare();
-        });
+        function bindPaste(el) {
+            el.addEventListener('paste', function (e) {
+                e.preventDefault();
+                var text = e.clipboardData.getData('text/plain');
+                el.textContent = text;
+                updateEmpty(el);
+                compare();
+            });
+        }
 
-        right.addEventListener('paste', function (e) {
-            e.preventDefault();
-            var text = e.clipboardData.getData('text/plain');
-            right.textContent = text;
-            updateEmpty(right);
-            compare();
-        });
+        bindPaste(left);
+        bindPaste(right);
 
         function copyWithoutGutters(e, el) {
             var sel = window.getSelection();
@@ -612,8 +593,12 @@
             e.preventDefault();
         }
 
-        left.addEventListener('copy', function (e) { copyWithoutGutters(e, left); });
-        right.addEventListener('copy', function (e) { copyWithoutGutters(e, right); });
+        function bindCopy(el) {
+            el.addEventListener('copy', function (e) { copyWithoutGutters(e, el); });
+        }
+
+        bindCopy(left);
+        bindCopy(right);
 
         var isSyncing = false;
 
@@ -654,20 +639,33 @@
             right.style.width = 'calc(50% - 2.5px)';
         }
 
-        if (divider) {
-            divider.addEventListener('mousedown', function (e) {
-                isDragging = true;
-                document.body.classList.add('resizing');
-                divider.classList.add('dragging');
-                e.preventDefault();
-            });
+        function startDragging(e) {
+            isDragging = true;
+            document.body.classList.add('resizing');
+            divider.classList.add('dragging');
+            e.preventDefault();
+        }
 
-            divider.addEventListener('touchstart', function (e) {
-                isDragging = true;
-                document.body.classList.add('resizing');
-                divider.classList.add('dragging');
-                e.preventDefault();
-            }, { passive: false });
+        function stopDragging() {
+            if (!isDragging) return;
+            isDragging = false;
+            document.body.classList.remove('resizing');
+            if (divider) divider.classList.remove('dragging');
+        }
+
+        function updateSplitFromClientX(clientX) {
+            var mainRect = mainEl.getBoundingClientRect();
+            var x = clientX - mainRect.left;
+            var percent = (x / mainRect.width) * 100;
+            if (percent < 15) percent = 15;
+            if (percent > 85) percent = 85;
+            left.style.width = 'calc(' + percent + '% - 2.5px)';
+            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+        }
+
+        if (divider) {
+            divider.addEventListener('mousedown', startDragging);
+            divider.addEventListener('touchstart', startDragging, { passive: false });
 
             divider.addEventListener('dblclick', function () {
                 resetToDefault();
@@ -676,42 +674,17 @@
 
         document.addEventListener('mousemove', function (e) {
             if (!isDragging) return;
-            var mainRect = mainEl.getBoundingClientRect();
-            var x = e.clientX - mainRect.left;
-            var percent = (x / mainRect.width) * 100;
-            if (percent < 15) percent = 15;
-            if (percent > 85) percent = 85;
-            left.style.width = 'calc(' + percent + '% - 2.5px)';
-            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+            updateSplitFromClientX(e.clientX);
         });
 
         document.addEventListener('touchmove', function (e) {
             if (!isDragging) return;
             var touch = e.touches[0];
-            var mainRect = mainEl.getBoundingClientRect();
-            var x = touch.clientX - mainRect.left;
-            var percent = (x / mainRect.width) * 100;
-            if (percent < 15) percent = 15;
-            if (percent > 85) percent = 85;
-            left.style.width = 'calc(' + percent + '% - 2.5px)';
-            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+            updateSplitFromClientX(touch.clientX);
         }, { passive: false });
 
-        document.addEventListener('mouseup', function () {
-            if (isDragging) {
-                isDragging = false;
-                document.body.classList.remove('resizing');
-                if (divider) divider.classList.remove('dragging');
-            }
-        });
-
-        document.addEventListener('touchend', function () {
-            if (isDragging) {
-                isDragging = false;
-                document.body.classList.remove('resizing');
-                if (divider) divider.classList.remove('dragging');
-            }
-        });
+        document.addEventListener('mouseup', stopDragging);
+        document.addEventListener('touchend', stopDragging);
 
         if (!left.textContent.trim()) left.innerHTML = '';
         if (!right.textContent.trim()) right.innerHTML = '';
