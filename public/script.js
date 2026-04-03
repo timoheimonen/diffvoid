@@ -68,14 +68,22 @@
         return result;
     }
 
-    function computeLCSLengths(left, right) {
-        var m = left.length, n = right.length;
-        var prev = new Uint16Array(n + 1);
-        var curr = new Uint16Array(n + 1);
+    var MODIFIED_SIMILARITY_THRESHOLD = 0.65;
+    var ALIGN_LOOKAHEAD = 4;
+
+    function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rightEnd, reverseLeft, reverseRight) {
+        var m = leftEnd - leftStart;
+        var n = rightEnd - rightStart;
+        var prev = new Uint32Array(n + 1);
+        var curr = new Uint32Array(n + 1);
 
         for (var i = 1; i <= m; i++) {
+            curr[0] = 0;
+            var leftIndex = reverseLeft ? (leftEnd - i) : (leftStart + i - 1);
+            var leftValue = left[leftIndex];
             for (var j = 1; j <= n; j++) {
-                if (left[i - 1] === right[j - 1]) {
+                var rightIndex = reverseRight ? (rightEnd - j) : (rightStart + j - 1);
+                if (leftValue === right[rightIndex]) {
                     curr[j] = prev[j - 1] + 1;
                 } else if (prev[j] > curr[j - 1]) {
                     curr[j] = prev[j];
@@ -83,39 +91,47 @@
                     curr[j] = curr[j - 1];
                 }
             }
-            var tmp = prev; prev = curr; curr = tmp;
+            var tmp = prev;
+            prev = curr;
+            curr = tmp;
         }
         return prev;
     }
 
-    function hirschberg(left, right, leftOffset, rightOffset, matched) {
-        var m = left.length, n = right.length;
+    function collectLcsPairsHirschberg(left, right, leftStart, leftEnd, rightStart, rightEnd, pairs) {
+        var m = leftEnd - leftStart;
+        var n = rightEnd - rightStart;
         if (m === 0 || n === 0) return;
+
         if (m === 1) {
-            for (var j = 0; j < n; j++) {
-                if (left[0] === right[j]) {
-                    matched.add(rightOffset + j);
+            var leftValue = left[leftStart];
+            for (var j = rightStart; j < rightEnd; j++) {
+                if (leftValue === right[j]) {
+                    pairs.push([leftStart, j]);
                     return;
                 }
             }
             return;
         }
 
-        var mid = Math.floor(m / 2);
-        var leftLCS = computeLCSLengths(left.slice(0, mid), right);
-        var rightLCS = computeLCSLengths(left.slice(mid).reverse(), right.slice().reverse());
+        var midOffset = Math.floor(m / 2);
+        var leftMid = leftStart + midOffset;
+        var leftLcs = computeLCSLengthsRange(left, leftStart, leftMid, right, rightStart, rightEnd, false, false);
+        var rightLcs = computeLCSLengthsRange(left, leftMid, leftEnd, right, rightStart, rightEnd, true, true);
 
-        var maxSum = -1, bestJ = 0;
-        for (var j = 0; j <= n; j++) {
-            var sum = leftLCS[j] + rightLCS[n - j];
+        var maxSum = -1;
+        var bestJOffset = 0;
+        for (var jOffset = 0; jOffset <= n; jOffset++) {
+            var sum = leftLcs[jOffset] + rightLcs[n - jOffset];
             if (sum > maxSum) {
                 maxSum = sum;
-                bestJ = j;
+                bestJOffset = jOffset;
             }
         }
 
-        hirschberg(left.slice(0, mid), right.slice(0, bestJ), leftOffset, rightOffset, matched);
-        hirschberg(left.slice(mid), right.slice(bestJ), leftOffset + mid, rightOffset + bestJ, matched);
+        var rightMid = rightStart + bestJOffset;
+        collectLcsPairsHirschberg(left, right, leftStart, leftMid, rightStart, rightMid, pairs);
+        collectLcsPairsHirschberg(left, right, leftMid, leftEnd, rightMid, rightEnd, pairs);
     }
 
     function computeCharDiff(left, right) {
@@ -140,16 +156,14 @@
         var rightCore = right.slice(prefix, n - suffix);
 
         if (ml * nl > 1000000) {
-            var leftArr = leftCore.split('');
-            var rightArr = rightCore.split('');
-            var charMatched = new Set();
-            hirschberg(leftArr, rightArr, 0, 0, charMatched);
-            for (var idx of charMatched) {
-                matched.add(prefix + idx);
+            var charPairs = [];
+            collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
+            for (var p = 0; p < charPairs.length; p++) {
+                matched.add(prefix + charPairs[p][1]);
             }
         } else {
             var dp = [];
-            for (var i = 0; i <= ml; i++) dp[i] = new Uint16Array(nl + 1);
+            for (var i = 0; i <= ml; i++) dp[i] = new Uint32Array(nl + 1);
 
             for (var i = 1; i <= ml; i++) {
                 for (var j = 1; j <= nl; j++) {
@@ -168,7 +182,7 @@
                 if (leftCore[i - 1] === rightCore[j - 1]) {
                     matched.add(prefix + j - 1);
                     i--; j--;
-                } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                } else if (dp[i - 1][j] >= dp[i][j - 1]) {
                     i--;
                 } else {
                     j--;
@@ -180,49 +194,8 @@
     }
 
 
-    function collectLineLcsPairs(leftLines, rightLines, leftOffset, rightOffset, pairs) {
-        var m = leftLines.length;
-        var n = rightLines.length;
-        if (m === 0 || n === 0) return;
-
-        if (m === 1) {
-            for (var j = 0; j < n; j++) {
-                if (leftLines[0] === rightLines[j]) {
-                    pairs.push([leftOffset, rightOffset + j]);
-                    return;
-                }
-            }
-            return;
-        }
-
-        var mid = Math.floor(m / 2);
-        var leftLcs = computeLCSLengths(leftLines.slice(0, mid), rightLines);
-        var rightLcs = computeLCSLengths(leftLines.slice(mid).reverse(), rightLines.slice().reverse());
-
-        var bestJ = 0;
-        var maxSum = -1;
-        for (var j = 0; j <= n; j++) {
-            var sum = leftLcs[j] + rightLcs[n - j];
-            if (sum > maxSum) {
-                maxSum = sum;
-                bestJ = j;
-            }
-        }
-
-        collectLineLcsPairs(
-            leftLines.slice(0, mid),
-            rightLines.slice(0, bestJ),
-            leftOffset,
-            rightOffset,
-            pairs
-        );
-        collectLineLcsPairs(
-            leftLines.slice(mid),
-            rightLines.slice(bestJ),
-            leftOffset + mid,
-            rightOffset + bestJ,
-            pairs
-        );
+    function collectLineLcsPairs(leftLines, rightLines, pairs) {
+        collectLcsPairsHirschberg(leftLines, rightLines, 0, leftLines.length, 0, rightLines.length, pairs);
     }
 
     function getBigrams(text) {
@@ -297,10 +270,28 @@
         var j = rightStart;
         while (i < leftEnd && j < rightEnd) {
             var s00 = lineSimilarity(leftLines[i], rightLines[j]);
-            var s01 = j + 1 < rightEnd ? lineSimilarity(leftLines[i], rightLines[j + 1]) : -1;
-            var s10 = i + 1 < leftEnd ? lineSimilarity(leftLines[i + 1], rightLines[j]) : -1;
 
-            if (s00 >= 0.55 && s00 >= s01 && s00 >= s10) {
+            var bestRightScore = -1;
+            var bestRightSkip = 0;
+            for (var rSkip = 1; rSkip <= ALIGN_LOOKAHEAD && j + rSkip < rightEnd; rSkip++) {
+                var rScore = lineSimilarity(leftLines[i], rightLines[j + rSkip]);
+                if (rScore > bestRightScore) {
+                    bestRightScore = rScore;
+                    bestRightSkip = rSkip;
+                }
+            }
+
+            var bestLeftScore = -1;
+            var bestLeftSkip = 0;
+            for (var lSkip = 1; lSkip <= ALIGN_LOOKAHEAD && i + lSkip < leftEnd; lSkip++) {
+                var lScore = lineSimilarity(leftLines[i + lSkip], rightLines[j]);
+                if (lScore > bestLeftScore) {
+                    bestLeftScore = lScore;
+                    bestLeftSkip = lSkip;
+                }
+            }
+
+            if (s00 >= MODIFIED_SIMILARITY_THRESHOLD && s00 >= bestRightScore && s00 >= bestLeftScore) {
                 var charMatched = computeCharDiff(leftLines[i], rightLines[j]);
                 diff.push({
                     type: 'modified',
@@ -313,15 +304,19 @@
                 continue;
             }
 
-            if (s01 >= 0.55 && s01 > s10) {
-                diff.push({ type: 'added', lineIndex: j });
-                j++;
+            if (bestRightScore >= MODIFIED_SIMILARITY_THRESHOLD && bestRightScore >= bestLeftScore) {
+                for (var add = 0; add < bestRightSkip; add++) {
+                    diff.push({ type: 'added', lineIndex: j });
+                    j++;
+                }
                 continue;
             }
 
-            if (s10 >= 0.55) {
-                diff.push({ type: 'missing', lineIndex: i });
-                i++;
+            if (bestLeftScore >= MODIFIED_SIMILARITY_THRESHOLD) {
+                for (var miss = 0; miss < bestLeftSkip; miss++) {
+                    diff.push({ type: 'missing', lineIndex: i });
+                    i++;
+                }
                 continue;
             }
 
@@ -363,7 +358,7 @@
         var diff = [];
         var pairs = [];
 
-        collectLineLcsPairs(leftLines, rightLines, 0, 0, pairs);
+        collectLineLcsPairs(leftLines, rightLines, pairs);
 
         var leftPos = 0;
         var rightPos = 0;
@@ -488,6 +483,10 @@
     document.addEventListener('DOMContentLoaded', function () {
         initTheme();
 
+        var left = document.getElementById('input-left');
+        var right = document.getElementById('input-right');
+        var rendering = false;
+
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
 
@@ -506,10 +505,6 @@
                 resetToDefault();
             });
         }
-
-        var left = document.getElementById('input-left');
-        var right = document.getElementById('input-right');
-        var rendering = false;
 
         function updateEmpty(el) {
             el.classList.toggle('is-empty', !el.textContent.trim());
