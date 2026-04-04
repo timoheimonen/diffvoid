@@ -67,19 +67,22 @@
             chunkBatchCount = 0;
         }
 
-        function initWorker(fallbackLeft, fallbackRight) {
+        function initWorker() {
             if (!workerEnabled) return null;
             try {
                 var w = new Worker('worker.js');
                 w.onmessage = handleWorkerMessage;
                 w.onerror = function() {
+                    if (worker !== w) return;
                     workerActive = false;
                     worker = null;
                     hideProgress();
                     showProgress('Worker failed. Using fallback...');
+                    var lt = storedLeftText;
+                    var rt = storedRightText;
                     setTimeout(function() {
                         hideProgress();
-                        compareSync(fallbackLeft, fallbackRight);
+                        compareSync(lt, rt);
                     }, 1500);
                 };
                 return w;
@@ -238,7 +241,7 @@
                 rendering = false;
                 hideCounter();
 
-                worker = initWorker(lt, rt);
+                worker = initWorker();
                 if (!worker) {
                     compareSync(lt, rt);
                     return;
