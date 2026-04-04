@@ -6,8 +6,12 @@
   var STORAGE_KEY = 'diffvoidcom_theme';
 
   function getTheme() {
-    var saved = localStorage.getItem(STORAGE_KEY);
-    return saved === 'dark' ? 'dark' : 'light';
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      return saved === 'dark' ? 'dark' : 'light';
+    } catch (e) {
+      return 'light';
+    }
   }
 
   function applyTheme(theme) {
@@ -15,14 +19,20 @@
   }
 
   function initTheme() {
-    applyTheme(getTheme());
+    try {
+      applyTheme(getTheme());
+    } catch (e) {
+      applyTheme('light');
+    }
   }
 
   function toggleTheme() {
     var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     var next = current === 'dark' ? 'light' : 'dark';
     applyTheme(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch (e) {}
   }
 
   window.diffvoidTheme = {
