@@ -63,30 +63,13 @@
 
     var REMOVE_ON_COPY_CODES = {
         0x00AD: true,
-        0x180E: true,
-        0x200B: true,
-        0x200C: true,
-        0x200D: true,
-        0x200E: true,
-        0x200F: true,
-        0x2060: true,
         0xFEFF: true
     };
 
     var SPACE_ON_COPY_CODES = {
-        0x00A0: true,
-        0x202F: true,
-        0x2002: true,
-        0x2003: true,
-        0x2004: true,
-        0x2005: true,
-        0x2006: true,
-        0x2007: true,
-        0x2008: true,
-        0x2009: true,
-        0x200A: true,
-        0x205F: true,
-        0x3000: true
+        0x00A0: true, 0x180E: true, 0x200B: true, 0x200C: true,
+        0x200D: true, 0x200E: true, 0x200F: true, 0x202F: true,
+        0x205F: true, 0x2060: true, 0x3000: true
     };
 
     function isInvisibleCode(code) {
@@ -115,7 +98,9 @@
             }
 
             if (SPACE_ON_COPY_CODES[code] || (code >= 0x2000 && code <= 0x200B)) {
-                result += ' ';
+                if (result.slice(-1) !== ' ') {
+                    result += ' ';
+                }
                 continue;
             }
 
@@ -200,13 +185,18 @@
         while (suffix < m - prefix && suffix < n - prefix
             && left[m - 1 - suffix] === right[n - 1 - suffix]) suffix++;
 
-        var matched = new Set();
-        for (var k = 0; k < prefix; k++) matched.add(k);
-        for (var k = n - suffix; k < n; k++) matched.add(k);
+        var leftMatched = new Set();
+        var rightMatched = new Set();
+        for (var k = 0; k < prefix; k++) {
+            leftMatched.add(k);
+            rightMatched.add(k);
+        }
+        for (var k = m - suffix; k < m; k++) leftMatched.add(k);
+        for (var k = n - suffix; k < n; k++) rightMatched.add(k);
 
         var ml = m - prefix - suffix;
         var nl = n - prefix - suffix;
-        if (ml === 0 || nl === 0) return matched;
+        if (ml === 0 || nl === 0) return { left: leftMatched, right: rightMatched };
 
         var leftCore = left.slice(prefix, m - suffix);
         var rightCore = right.slice(prefix, n - suffix);
@@ -215,7 +205,8 @@
             var charPairs = [];
             collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
             for (var p = 0; p < charPairs.length; p++) {
-                matched.add(prefix + charPairs[p][1]);
+                leftMatched.add(prefix + charPairs[p][0]);
+                rightMatched.add(prefix + charPairs[p][1]);
             }
         } else {
             var dp = [];
@@ -236,7 +227,8 @@
             var i = ml, j = nl;
             while (i > 0 && j > 0) {
                 if (leftCore[i - 1] === rightCore[j - 1]) {
-                    matched.add(prefix + j - 1);
+                    leftMatched.add(prefix + i - 1);
+                    rightMatched.add(prefix + j - 1);
                     i--; j--;
                 } else if (dp[i - 1][j] >= dp[i][j - 1]) {
                     i--;
@@ -246,7 +238,7 @@
             }
         }
 
-        return matched;
+        return { left: leftMatched, right: rightMatched };
     }
 
 
@@ -353,7 +345,8 @@
                     type: 'modified',
                     leftLineIndex: i,
                     rightLineIndex: j,
-                    chars: buildCharArray(rightLines[j], charMatched)
+                    leftChars: buildCharArray(leftLines[i], charMatched.left),
+                    chars: buildCharArray(rightLines[j], charMatched.right)
                 });
                 i++;
                 j++;
@@ -385,15 +378,23 @@
                 diff.push({ type: 'missing', lineIndex: i });
                 i++;
             } else {
-                var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
-                diff.push({
-                    type: 'modified',
-                    leftLineIndex: i,
-                    rightLineIndex: j,
-                    chars: buildCharArray(rightLines[j], charMatchedFallback)
-                });
-                i++;
-                j++;
+                var fallbackSim = lineSimilarity(leftLines[i], rightLines[j]);
+                if (fallbackSim >= MODIFIED_SIMILARITY_THRESHOLD) {
+                    var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
+                    diff.push({
+                        type: 'modified',
+                        leftLineIndex: i,
+                        rightLineIndex: j,
+                        leftChars: buildCharArray(leftLines[i], charMatchedFallback.left),
+                        chars: buildCharArray(rightLines[j], charMatchedFallback.right)
+                    });
+                } else if (rightRemaining > leftRemaining) {
+                    diff.push({ type: 'added', lineIndex: j });
+                    j++;
+                } else {
+                    diff.push({ type: 'missing', lineIndex: i });
+                    i++;
+                }
             }
         }
 
@@ -409,8 +410,10 @@
     }
 
     function computeLineDiff(left, right) {
-        var leftLines = left.split('\n');
-        var rightLines = right.split('\n');
+        var leftTrailing = left.endsWith('\n');
+        var rightTrailing = right.endsWith('\n');
+        var leftLines = (leftTrailing ? left.slice(0, -1) : left).split('\n');
+        var rightLines = (rightTrailing ? right.slice(0, -1) : right).split('\n');
         var diff = [];
         var pairs = [];
 
@@ -483,7 +486,17 @@
                         html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                     }
                 } else {
-                    html += renderWithInvisibles(diffResult.leftLines[item.leftLineIndex]);
+                    var lj = 0;
+                    while (lj < item.leftChars.length) {
+                        var lmatch = item.leftChars[lj].match;
+                        var lsegment = '';
+                        while (lj < item.leftChars.length && item.leftChars[lj].match === lmatch) {
+                            lsegment += item.leftChars[lj].c;
+                            lj++;
+                        }
+                        var lcls = lmatch ? 'diff-match' : 'diff-mismatch';
+                        html += '<span class="' + lcls + '">' + renderWithInvisibles(lsegment, !lmatch) + '</span>';
+                    }
                 }
                 html += '</span>';
                 html += '</div>';
@@ -531,6 +544,17 @@
         var counter = document.getElementById('mismatch-counter');
         var copyCleanLeftBtn = document.getElementById('copy-clean-left');
         var copyCleanRightBtn = document.getElementById('copy-clean-right');
+        var progressEl = document.getElementById('progress-indicator');
+
+        var workerEnabled = typeof Worker !== 'undefined';
+        var worker = null;
+        var workerActive = false;
+        var chunkBuffer = { left: '', right: '' };
+        var chunkBatchCount = 0;
+        var isProcessing = false;
+        var storedLeftText = '';
+        var storedRightText = '';
+        var MAX_LINES = 25000;
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {
@@ -541,17 +565,102 @@
             }
         }
 
+        function showProgress(text) {
+            if (!progressEl) return;
+            progressEl.textContent = text;
+            progressEl.style.display = 'block';
+        }
+
+        function hideProgress() {
+            if (!progressEl) return;
+            progressEl.style.display = 'none';
+        }
+
+        function cancelWorker() {
+            if (worker) {
+                worker.postMessage({ type: 'cancel' });
+                worker.terminate();
+                worker = null;
+            }
+            workerActive = false;
+            chunkBuffer = { left: '', right: '' };
+            chunkBatchCount = 0;
+        }
+
+        function initWorker(fallbackLeft, fallbackRight) {
+            if (!workerEnabled) return null;
+            try {
+                var w = new Worker('worker.js');
+                w.onmessage = handleWorkerMessage;
+                w.onerror = function() {
+                    workerActive = false;
+                    worker = null;
+                    hideProgress();
+                    showProgress('Worker failed. Using fallback...');
+                    setTimeout(function() {
+                        hideProgress();
+                        compareSync(fallbackLeft, fallbackRight);
+                    }, 1500);
+                };
+                return w;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function handleWorkerMessage(e) {
+            var data = e.data;
+            if (data.type === 'chunk') {
+                chunkBuffer.left += data.leftHtml;
+                chunkBuffer.right += data.rightHtml;
+                chunkBatchCount++;
+
+                showProgress('Processing ' + data.processed + ' of ' + data.total + ' entries...');
+
+                if (chunkBatchCount >= 3) {
+                    flushChunkBuffer();
+                }
+            } else if (data.type === 'done') {
+                flushChunkBuffer();
+                setCounter(data.mismatchCount);
+                hideProgress();
+                workerActive = false;
+                isProcessing = false;
+
+                updateEmpty(right);
+                updateEmpty(left);
+            } else if (data.type === 'cancelled') {
+                hideProgress();
+                workerActive = false;
+                isProcessing = false;
+            }
+        }
+
+        function flushChunkBuffer() {
+            if (!chunkBuffer.left && !chunkBuffer.right) return;
+            rendering = true;
+            left.insertAdjacentHTML('beforeend', chunkBuffer.left);
+            right.insertAdjacentHTML('beforeend', chunkBuffer.right);
+            rendering = false;
+            chunkBuffer = { left: '', right: '' };
+            chunkBatchCount = 0;
+        }
+
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
 
         var clearBtn = document.getElementById('clear-button');
         if (clearBtn) {
             clearBtn.addEventListener('click', function () {
+                cancelWorker();
+                storedLeftText = '';
+                storedRightText = '';
                 left.innerHTML = '';
                 right.innerHTML = '';
                 updateEmpty(left);
                 updateEmpty(right);
                 hideCounter();
+                hideProgress();
                 if (copyCleanLeftBtn) copyCleanLeftBtn.classList.remove('visible');
                 if (copyCleanRightBtn) copyCleanRightBtn.classList.remove('visible');
                 resetToDefault();
@@ -567,7 +676,7 @@
         function setCounter(mismatchCount) {
             if (!counter) return;
             if (mismatchCount > 0) {
-                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
+                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' different';
                 counter.classList.remove('all-match');
             } else {
                 counter.textContent = '100% Match';
@@ -599,7 +708,7 @@
 
         function getFieldText(el) {
             var diffLines = el.querySelectorAll('.diff-line');
-            if (diffLines.length === 0) return el.innerText || '';
+            if (diffLines.length === 0) return el.textContent || '';
             var parts = [];
             diffLines.forEach(function (line) {
                 var gutter = line.querySelector('.diff-gutter');
@@ -612,8 +721,8 @@
         }
 
         function compare() {
-            var lt = getFieldText(left);
-            var rt = getFieldText(right);
+            var lt = storedLeftText || getFieldText(left);
+            var rt = storedRightText || getFieldText(right);
 
             setCopyButtonVisibility(lt, rt);
 
@@ -623,11 +732,49 @@
                     right.innerHTML = '';
                     rendering = false;
                 }
+                if (!lt.length) { storedLeftText = ''; }
+                if (!rt.length) { storedRightText = ''; }
                 updateEmpty(right);
                 hideCounter();
+                hideProgress();
                 return;
             }
 
+            var leftLines = lt.split('\n').length;
+            var rightLines = rt.split('\n').length;
+            var estimatedLines = Math.max(leftLines, rightLines);
+
+            if (estimatedLines > MAX_LINES) {
+                cancelWorker();
+                showProgress('File too large. Maximum ' + MAX_LINES.toLocaleString() + ' lines supported.');
+                return;
+            }
+
+            if (workerEnabled && estimatedLines > 100) {
+                cancelWorker();
+                rendering = true;
+                left.innerHTML = '';
+                right.innerHTML = '';
+                rendering = false;
+                hideCounter();
+
+                worker = initWorker(lt, rt);
+                if (!worker) {
+                    compareSync(lt, rt);
+                    return;
+                }
+
+                workerActive = true;
+                isProcessing = true;
+                showProgress('Starting comparison...');
+                worker.postMessage({ type: 'diff', left: lt, right: rt });
+            } else {
+                cancelWorker();
+                compareSync(lt, rt);
+            }
+        }
+
+        function compareSync(lt, rt) {
             var diffResult = computeLineDiff(lt, rt);
             var rightHtml = buildPanelHtml(diffResult, 'right');
             var leftHtml = buildPanelHtml(diffResult, 'left');
@@ -665,6 +812,11 @@
                 var text = e.clipboardData.getData('text/plain');
                 el.textContent = text;
                 updateEmpty(el);
+                if (el === left) {
+                    storedLeftText = text;
+                } else {
+                    storedRightText = text;
+                }
                 compare();
             });
         }

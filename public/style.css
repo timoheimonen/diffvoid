@@ -106,6 +106,28 @@ header h1 {
     background-color: rgba(22, 163, 74, 0.12);
 }
 
+.progress-indicator {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    background-color: var(--toggle-bg);
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin: 0 auto;
+    opacity: 0.8;
+}
+
+.progress-indicator {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    background-color: var(--toggle-bg);
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin: 0 auto;
+    opacity: 0.8;
+}
+
 .copy-clean-container {
     display: flex;
     align-items: center;
