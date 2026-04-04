@@ -200,13 +200,18 @@
         while (suffix < m - prefix && suffix < n - prefix
             && left[m - 1 - suffix] === right[n - 1 - suffix]) suffix++;
 
-        var matched = new Set();
-        for (var k = 0; k < prefix; k++) matched.add(k);
-        for (var k = n - suffix; k < n; k++) matched.add(k);
+        var leftMatched = new Set();
+        var rightMatched = new Set();
+        for (var k = 0; k < prefix; k++) {
+            leftMatched.add(k);
+            rightMatched.add(k);
+        }
+        for (var k = m - suffix; k < m; k++) leftMatched.add(k);
+        for (var k = n - suffix; k < n; k++) rightMatched.add(k);
 
         var ml = m - prefix - suffix;
         var nl = n - prefix - suffix;
-        if (ml === 0 || nl === 0) return matched;
+        if (ml === 0 || nl === 0) return { left: leftMatched, right: rightMatched };
 
         var leftCore = left.slice(prefix, m - suffix);
         var rightCore = right.slice(prefix, n - suffix);
@@ -215,7 +220,8 @@
             var charPairs = [];
             collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
             for (var p = 0; p < charPairs.length; p++) {
-                matched.add(prefix + charPairs[p][1]);
+                leftMatched.add(prefix + charPairs[p][0]);
+                rightMatched.add(prefix + charPairs[p][1]);
             }
         } else {
             var dp = [];
@@ -236,7 +242,8 @@
             var i = ml, j = nl;
             while (i > 0 && j > 0) {
                 if (leftCore[i - 1] === rightCore[j - 1]) {
-                    matched.add(prefix + j - 1);
+                    leftMatched.add(prefix + i - 1);
+                    rightMatched.add(prefix + j - 1);
                     i--; j--;
                 } else if (dp[i - 1][j] >= dp[i][j - 1]) {
                     i--;
@@ -246,7 +253,7 @@
             }
         }
 
-        return matched;
+        return { left: leftMatched, right: rightMatched };
     }
 
 
@@ -353,7 +360,8 @@
                     type: 'modified',
                     leftLineIndex: i,
                     rightLineIndex: j,
-                    chars: buildCharArray(rightLines[j], charMatched)
+                    leftChars: buildCharArray(leftLines[i], charMatched.left),
+                    chars: buildCharArray(rightLines[j], charMatched.right)
                 });
                 i++;
                 j++;
@@ -385,15 +393,23 @@
                 diff.push({ type: 'missing', lineIndex: i });
                 i++;
             } else {
-                var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
-                diff.push({
-                    type: 'modified',
-                    leftLineIndex: i,
-                    rightLineIndex: j,
-                    chars: buildCharArray(rightLines[j], charMatchedFallback)
-                });
-                i++;
-                j++;
+                var fallbackSim = lineSimilarity(leftLines[i], rightLines[j]);
+                if (fallbackSim >= MODIFIED_SIMILARITY_THRESHOLD) {
+                    var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
+                    diff.push({
+                        type: 'modified',
+                        leftLineIndex: i,
+                        rightLineIndex: j,
+                        leftChars: buildCharArray(leftLines[i], charMatchedFallback.left),
+                        chars: buildCharArray(rightLines[j], charMatchedFallback.right)
+                    });
+                } else if (rightRemaining > leftRemaining) {
+                    diff.push({ type: 'added', lineIndex: j });
+                    j++;
+                } else {
+                    diff.push({ type: 'missing', lineIndex: i });
+                    i++;
+                }
             }
         }
 
@@ -409,8 +425,10 @@
     }
 
     function computeLineDiff(left, right) {
-        var leftLines = left.split('\n');
-        var rightLines = right.split('\n');
+        var leftTrailing = left.endsWith('\n');
+        var rightTrailing = right.endsWith('\n');
+        var leftLines = (leftTrailing ? left.slice(0, -1) : left).split('\n');
+        var rightLines = (rightTrailing ? right.slice(0, -1) : right).split('\n');
         var diff = [];
         var pairs = [];
 
@@ -483,7 +501,17 @@
                         html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                     }
                 } else {
-                    html += renderWithInvisibles(diffResult.leftLines[item.leftLineIndex]);
+                    var lj = 0;
+                    while (lj < item.leftChars.length) {
+                        var lmatch = item.leftChars[lj].match;
+                        var lsegment = '';
+                        while (lj < item.leftChars.length && item.leftChars[lj].match === lmatch) {
+                            lsegment += item.leftChars[lj].c;
+                            lj++;
+                        }
+                        var lcls = lmatch ? 'diff-match' : 'diff-mismatch';
+                        html += '<span class="' + lcls + '">' + renderWithInvisibles(lsegment, !lmatch) + '</span>';
+                    }
                 }
                 html += '</span>';
                 html += '</div>';
@@ -567,7 +595,7 @@
         function setCounter(mismatchCount) {
             if (!counter) return;
             if (mismatchCount > 0) {
-                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' with mismatch';
+                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' different';
                 counter.classList.remove('all-match');
             } else {
                 counter.textContent = '100% Match';
