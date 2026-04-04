@@ -386,12 +386,13 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
                     leftChars: buildCharArray(leftLines[i], charMatchedFallback.left),
                     chars: buildCharArray(rightLines[j], charMatchedFallback.right)
                 });
-            } else if (rightRemaining > leftRemaining) {
-                diff.push({ type: 'added', lineIndex: j });
+                i++;
                 j++;
             } else {
                 diff.push({ type: 'missing', lineIndex: i });
                 i++;
+                diff.push({ type: 'added', lineIndex: j });
+                j++;
             }
         }
     }
