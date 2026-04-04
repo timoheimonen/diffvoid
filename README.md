@@ -11,8 +11,10 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 - **Copy Without Invisible Characters**: When invisible characters are detected, copy buttons appear next to the comparison result. Zero-width characters are removed completely, while special spaces (NBSP, En/Em space, etc.) are replaced with standard spaces to preserve word separation.
 - **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
+- **Web Worker Processing**: Comparison runs in a background Web Worker to keep the UI responsive. Falls back to synchronous processing if workers are unavailable.
+- **Chunked Rendering**: Large diffs are rendered in batches to prevent browser freezing.
+- **Input Limit**: Maximum 10,000 lines per side enforced to maintain performance.
 - **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
-- **Practical Input Size**: Because all comparison runs in your browser, a safe practical limit is around 10,000 lines per side.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
 ## How to Use

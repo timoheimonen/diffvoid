@@ -63,30 +63,13 @@
 
     var REMOVE_ON_COPY_CODES = {
         0x00AD: true,
-        0x180E: true,
-        0x200B: true,
-        0x200C: true,
-        0x200D: true,
-        0x200E: true,
-        0x200F: true,
-        0x2060: true,
         0xFEFF: true
     };
 
     var SPACE_ON_COPY_CODES = {
-        0x00A0: true,
-        0x202F: true,
-        0x2002: true,
-        0x2003: true,
-        0x2004: true,
-        0x2005: true,
-        0x2006: true,
-        0x2007: true,
-        0x2008: true,
-        0x2009: true,
-        0x200A: true,
-        0x205F: true,
-        0x3000: true
+        0x00A0: true, 0x180E: true, 0x200B: true, 0x200C: true,
+        0x200D: true, 0x200E: true, 0x200F: true, 0x202F: true,
+        0x205F: true, 0x2060: true, 0x3000: true
     };
 
     function isInvisibleCode(code) {
@@ -115,7 +98,9 @@
             }
 
             if (SPACE_ON_COPY_CODES[code] || (code >= 0x2000 && code <= 0x200B)) {
-                result += ' ';
+                if (result.slice(-1) !== ' ') {
+                    result += ' ';
+                }
                 continue;
             }
 
@@ -559,6 +544,17 @@
         var counter = document.getElementById('mismatch-counter');
         var copyCleanLeftBtn = document.getElementById('copy-clean-left');
         var copyCleanRightBtn = document.getElementById('copy-clean-right');
+        var progressEl = document.getElementById('progress-indicator');
+
+        var workerEnabled = typeof Worker !== 'undefined';
+        var worker = null;
+        var workerActive = false;
+        var chunkBuffer = { left: '', right: '' };
+        var chunkBatchCount = 0;
+        var isProcessing = false;
+        var storedLeftText = '';
+        var storedRightText = '';
+        var MAX_LINES = 10000;
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {
@@ -569,17 +565,102 @@
             }
         }
 
+        function showProgress(text) {
+            if (!progressEl) return;
+            progressEl.textContent = text;
+            progressEl.style.display = 'block';
+        }
+
+        function hideProgress() {
+            if (!progressEl) return;
+            progressEl.style.display = 'none';
+        }
+
+        function cancelWorker() {
+            if (worker) {
+                worker.postMessage({ type: 'cancel' });
+                worker.terminate();
+                worker = null;
+            }
+            workerActive = false;
+            chunkBuffer = { left: '', right: '' };
+            chunkBatchCount = 0;
+        }
+
+        function initWorker(fallbackLeft, fallbackRight) {
+            if (!workerEnabled) return null;
+            try {
+                var w = new Worker('worker.js');
+                w.onmessage = handleWorkerMessage;
+                w.onerror = function() {
+                    workerActive = false;
+                    worker = null;
+                    hideProgress();
+                    showProgress('Worker failed. Using fallback...');
+                    setTimeout(function() {
+                        hideProgress();
+                        compareSync(fallbackLeft, fallbackRight);
+                    }, 1500);
+                };
+                return w;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function handleWorkerMessage(e) {
+            var data = e.data;
+            if (data.type === 'chunk') {
+                chunkBuffer.left += data.leftHtml;
+                chunkBuffer.right += data.rightHtml;
+                chunkBatchCount++;
+
+                showProgress('Processing ' + data.processed + ' of ' + data.total + ' entries...');
+
+                if (chunkBatchCount >= 3) {
+                    flushChunkBuffer();
+                }
+            } else if (data.type === 'done') {
+                flushChunkBuffer();
+                setCounter(data.mismatchCount);
+                hideProgress();
+                workerActive = false;
+                isProcessing = false;
+
+                updateEmpty(right);
+                updateEmpty(left);
+            } else if (data.type === 'cancelled') {
+                hideProgress();
+                workerActive = false;
+                isProcessing = false;
+            }
+        }
+
+        function flushChunkBuffer() {
+            if (!chunkBuffer.left && !chunkBuffer.right) return;
+            rendering = true;
+            left.insertAdjacentHTML('beforeend', chunkBuffer.left);
+            right.insertAdjacentHTML('beforeend', chunkBuffer.right);
+            rendering = false;
+            chunkBuffer = { left: '', right: '' };
+            chunkBatchCount = 0;
+        }
+
         var toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
 
         var clearBtn = document.getElementById('clear-button');
         if (clearBtn) {
             clearBtn.addEventListener('click', function () {
+                cancelWorker();
+                storedLeftText = '';
+                storedRightText = '';
                 left.innerHTML = '';
                 right.innerHTML = '';
                 updateEmpty(left);
                 updateEmpty(right);
                 hideCounter();
+                hideProgress();
                 if (copyCleanLeftBtn) copyCleanLeftBtn.classList.remove('visible');
                 if (copyCleanRightBtn) copyCleanRightBtn.classList.remove('visible');
                 resetToDefault();
@@ -627,7 +708,7 @@
 
         function getFieldText(el) {
             var diffLines = el.querySelectorAll('.diff-line');
-            if (diffLines.length === 0) return el.innerText || '';
+            if (diffLines.length === 0) return el.textContent || '';
             var parts = [];
             diffLines.forEach(function (line) {
                 var gutter = line.querySelector('.diff-gutter');
@@ -640,8 +721,8 @@
         }
 
         function compare() {
-            var lt = getFieldText(left);
-            var rt = getFieldText(right);
+            var lt = storedLeftText || getFieldText(left);
+            var rt = storedRightText || getFieldText(right);
 
             setCopyButtonVisibility(lt, rt);
 
@@ -651,11 +732,49 @@
                     right.innerHTML = '';
                     rendering = false;
                 }
+                if (!lt.length) { storedLeftText = ''; }
+                if (!rt.length) { storedRightText = ''; }
                 updateEmpty(right);
                 hideCounter();
+                hideProgress();
                 return;
             }
 
+            var leftLines = lt.split('\n').length;
+            var rightLines = rt.split('\n').length;
+            var estimatedLines = Math.max(leftLines, rightLines);
+
+            if (estimatedLines > MAX_LINES) {
+                cancelWorker();
+                showProgress('File too large. Maximum ' + MAX_LINES.toLocaleString() + ' lines supported.');
+                return;
+            }
+
+            if (workerEnabled && estimatedLines > 100) {
+                cancelWorker();
+                rendering = true;
+                left.innerHTML = '';
+                right.innerHTML = '';
+                rendering = false;
+                hideCounter();
+
+                worker = initWorker(lt, rt);
+                if (!worker) {
+                    compareSync(lt, rt);
+                    return;
+                }
+
+                workerActive = true;
+                isProcessing = true;
+                showProgress('Starting comparison...');
+                worker.postMessage({ type: 'diff', left: lt, right: rt });
+            } else {
+                cancelWorker();
+                compareSync(lt, rt);
+            }
+        }
+
+        function compareSync(lt, rt) {
             var diffResult = computeLineDiff(lt, rt);
             var rightHtml = buildPanelHtml(diffResult, 'right');
             var leftHtml = buildPanelHtml(diffResult, 'left');
@@ -693,6 +812,11 @@
                 var text = e.clipboardData.getData('text/plain');
                 el.textContent = text;
                 updateEmpty(el);
+                if (el === left) {
+                    storedLeftText = text;
+                } else {
+                    storedRightText = text;
+                }
                 compare();
             });
         }
