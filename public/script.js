@@ -554,7 +554,7 @@
         var isProcessing = false;
         var storedLeftText = '';
         var storedRightText = '';
-        var MAX_LINES = 10000;
+        var MAX_LINES = 25000;
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {

@@ -13,7 +13,7 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
 - **Web Worker Processing**: Comparison runs in a background Web Worker to keep the UI responsive. Falls back to synchronous processing if workers are unavailable.
 - **Chunked Rendering**: Large diffs are rendered in batches to prevent browser freezing.
-- **Input Limit**: Maximum 10,000 lines per side enforced to maintain performance.
+- **Input Limit**: Maximum 25,000 lines per side enforced to maintain performance.
 - **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
