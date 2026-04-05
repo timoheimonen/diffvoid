@@ -5,23 +5,23 @@
 importScripts('shared-diff.js');
 
 function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
-    var html = '';
-    var lineNum = 1;
-    var isRight = side === 'right';
+    let html = '';
+    let lineNum = 1;
+    const isRight = side === 'right';
 
-    for (var i = 0; i < startIdx; i++) {
-        var prevItem = diffResult.diff[i];
+    for (let i = 0; i < startIdx; i++) {
+        const prevItem = diffResult.diff[i];
         if (prevItem.type === 'match' || prevItem.type === 'modified'
             || (prevItem.type === 'added' && isRight) || (prevItem.type === 'missing' && !isRight)) {
             lineNum++;
         }
     }
 
-    for (var i = startIdx; i < endIdx && i < diffResult.diff.length; i++) {
-        var item = diffResult.diff[i];
+    for (let i = startIdx; i < endIdx && i < diffResult.diff.length; i++) {
+        const item = diffResult.diff[i];
 
         if (item.type === 'match') {
-            var line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
+            const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
             html += '<div class="diff-line">';
             html += '<span class="diff-gutter">' + lineNum + '</span>';
             html += '<span class="diff-content';
@@ -36,27 +36,27 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
             html += '<span class="diff-gutter">' + lineNum + '</span>';
             html += '<span class="diff-content">';
             if (isRight) {
-                var j = 0;
+                let j = 0;
                 while (j < item.chars.length) {
-                    var match = item.chars[j].match;
-                    var segment = '';
+                    const match = item.chars[j].match;
+                    let segment = '';
                     while (j < item.chars.length && item.chars[j].match === match) {
                         segment += item.chars[j].c;
                         j++;
                     }
-                    var cls = match ? 'diff-match' : 'diff-mismatch';
+                    const cls = match ? 'diff-match' : 'diff-mismatch';
                     html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                 }
             } else {
-                var lj = 0;
+                let lj = 0;
                 while (lj < item.leftChars.length) {
-                    var lmatch = item.leftChars[lj].match;
-                    var lsegment = '';
+                    const lmatch = item.leftChars[lj].match;
+                    let lsegment = '';
                     while (lj < item.leftChars.length && item.leftChars[lj].match === lmatch) {
                         lsegment += item.leftChars[lj].c;
                         lj++;
                     }
-                    var lcls = lmatch ? 'diff-match' : 'diff-mismatch';
+                    const lcls = lmatch ? 'diff-match' : 'diff-mismatch';
                     html += '<span class="' + lcls + '">' + renderWithInvisibles(lsegment, !lmatch) + '</span>';
                 }
             }
@@ -65,7 +65,7 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
             lineNum++;
         } else if (item.type === 'added') {
             if (isRight) {
-                var addedLine = diffResult.rightLines[item.lineIndex];
+                const addedLine = diffResult.rightLines[item.lineIndex];
                 html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(addedLine, true) + '</span></span>';
@@ -84,7 +84,7 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
                 html += '<span class="diff-content"></span>';
                 html += '</div>';
             } else {
-                var missingLine = diffResult.leftLines[item.lineIndex];
+                const missingLine = diffResult.leftLines[item.lineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content">' + renderWithInvisibles(missingLine) + '</span>';
@@ -97,8 +97,8 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
     return { html: html, endIdx: Math.min(endIdx, diffResult.diff.length) };
 }
 
-var CHUNK_SIZE = 50;
-var cancelled = false;
+const CHUNK_SIZE = 50;
+let cancelled = false;
 
 self.onmessage = function (e) {
     if (e.data.type === 'cancel') {
@@ -109,30 +109,30 @@ self.onmessage = function (e) {
     if (e.data.type !== 'diff') return;
 
     cancelled = false;
-    var left = e.data.left;
-    var right = e.data.right;
+    const left = e.data.left;
+    const right = e.data.right;
 
-    var diffResult = computeLineDiff(left, right);
-    var totalEntries = diffResult.diff.length;
+    const diffResult = computeLineDiff(left, right);
+    const totalEntries = diffResult.diff.length;
 
-    var mismatchCount = 0;
-    for (var i = 0; i < totalEntries; i++) {
-        var type = diffResult.diff[i].type;
+    let mismatchCount = 0;
+    for (let i = 0; i < totalEntries; i++) {
+        const type = diffResult.diff[i].type;
         if (type === 'added' || type === 'missing' || type === 'modified') {
             mismatchCount++;
         }
     }
 
-    var startIdx = 0;
+    let startIdx = 0;
     while (startIdx < totalEntries) {
         if (cancelled) {
             self.postMessage({ type: 'cancelled' });
             return;
         }
 
-        var endIdx = Math.min(startIdx + CHUNK_SIZE, totalEntries);
-        var leftChunk = buildPanelHtmlRange(diffResult, 'left', startIdx, endIdx);
-        var rightChunk = buildPanelHtmlRange(diffResult, 'right', startIdx, endIdx);
+        const endIdx = Math.min(startIdx + CHUNK_SIZE, totalEntries);
+        const leftChunk = buildPanelHtmlRange(diffResult, 'left', startIdx, endIdx);
+        const rightChunk = buildPanelHtmlRange(diffResult, 'right', startIdx, endIdx);
 
         self.postMessage({
             type: 'chunk',

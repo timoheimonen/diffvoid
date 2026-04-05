@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
-var INVISIBLE_RENDER_META = {
+const INVISIBLE_RENDER_META = {
     0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)' },
     0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)' },
     0x180E: { cls: 'invisible-mvs', title: 'Mongolian vowel separator (U+180E)' },
@@ -24,12 +24,12 @@ var INVISIBLE_RENDER_META = {
     0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)' }
 };
 
-var REMOVE_ON_COPY_CODES = {
+const REMOVE_ON_COPY_CODES = {
     0x00AD: true,
     0xFEFF: true
 };
 
-var SPACE_ON_COPY_CODES = {
+const SPACE_ON_COPY_CODES = {
     0x00A0: true, 0x180E: true, 0x200B: true, 0x200C: true,
     0x200D: true, 0x200E: true, 0x200F: true, 0x202F: true,
     0x205F: true, 0x2060: true, 0x3000: true
@@ -42,7 +42,7 @@ function isInvisibleCode(code) {
 }
 
 function hasInvisibleCharacters(text) {
-    for (var i = 0; i < text.length; i++) {
+    for (let i = 0; i < text.length; i++) {
         if (isInvisibleCode(text.charCodeAt(i))) {
             return true;
         }
@@ -51,10 +51,10 @@ function hasInvisibleCharacters(text) {
 }
 
 function stripInvisibleCharacters(text) {
-    var result = '';
-    for (var i = 0; i < text.length; i++) {
-        var char = text[i];
-        var code = char.charCodeAt(0);
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const code = char.charCodeAt(0);
 
         if (REMOVE_ON_COPY_CODES[code]) {
             continue;
@@ -77,11 +77,11 @@ function renderInvisibleSpan(code, cls, title) {
 }
 
 function renderWithInvisibles(text, isMismatch) {
-    var result = '';
-    for (var i = 0; i < text.length; i++) {
-        var char = text[i];
-        var code = char.charCodeAt(0);
-        var meta = INVISIBLE_RENDER_META[code];
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const code = char.charCodeAt(0);
+        const meta = INVISIBLE_RENDER_META[code];
 
         if (code === 0x0020 && isMismatch) {
             result += renderInvisibleSpan(code, 'invisible-regular-space', 'Space (U+0020)');
@@ -101,28 +101,28 @@ function escapeHtml(s) {
 }
 
 function buildCharArray(text, matched) {
-    var result = [];
-    for (var i = 0; i < text.length; i++) {
+    const result = [];
+    for (let i = 0; i < text.length; i++) {
         result.push({ c: text[i], match: matched.has(i) });
     }
     return result;
 }
 
-var MODIFIED_SIMILARITY_THRESHOLD = 0.65;
-var ALIGN_LOOKAHEAD = 4;
+const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
+const ALIGN_LOOKAHEAD = 4;
 
 function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rightEnd, reverseLeft, reverseRight) {
-    var m = leftEnd - leftStart;
-    var n = rightEnd - rightStart;
-    var prev = new Uint32Array(n + 1);
-    var curr = new Uint32Array(n + 1);
+    const m = leftEnd - leftStart;
+    const n = rightEnd - rightStart;
+    let prev = new Uint32Array(n + 1);
+    let curr = new Uint32Array(n + 1);
 
-    for (var i = 1; i <= m; i++) {
+    for (let i = 1; i <= m; i++) {
         curr[0] = 0;
-        var leftIndex = reverseLeft ? (leftEnd - i) : (leftStart + i - 1);
-        var leftValue = left[leftIndex];
-        for (var j = 1; j <= n; j++) {
-            var rightIndex = reverseRight ? (rightEnd - j) : (rightStart + j - 1);
+        const leftIndex = reverseLeft ? (leftEnd - i) : (leftStart + i - 1);
+        const leftValue = left[leftIndex];
+        for (let j = 1; j <= n; j++) {
+            const rightIndex = reverseRight ? (rightEnd - j) : (rightStart + j - 1);
             if (leftValue === right[rightIndex]) {
                 curr[j] = prev[j - 1] + 1;
             } else if (prev[j] > curr[j - 1]) {
@@ -131,7 +131,7 @@ function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rig
                 curr[j] = curr[j - 1];
             }
         }
-        var tmp = prev;
+        const tmp = prev;
         prev = curr;
         curr = tmp;
     }
@@ -139,13 +139,13 @@ function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rig
 }
 
 function collectLcsPairsHirschberg(left, right, leftStart, leftEnd, rightStart, rightEnd, pairs) {
-    var m = leftEnd - leftStart;
-    var n = rightEnd - rightStart;
+    const m = leftEnd - leftStart;
+    const n = rightEnd - rightStart;
     if (m === 0 || n === 0) return;
 
     if (m === 1) {
-        var leftValue = left[leftStart];
-        for (var j = rightStart; j < rightEnd; j++) {
+        const leftValue = left[leftStart];
+        for (let j = rightStart; j < rightEnd; j++) {
             if (leftValue === right[j]) {
                 pairs.push([leftStart, j]);
                 return;
@@ -154,65 +154,65 @@ function collectLcsPairsHirschberg(left, right, leftStart, leftEnd, rightStart, 
         return;
     }
 
-    var midOffset = Math.floor(m / 2);
-    var leftMid = leftStart + midOffset;
-    var leftLcs = computeLCSLengthsRange(left, leftStart, leftMid, right, rightStart, rightEnd, false, false);
-    var rightLcs = computeLCSLengthsRange(left, leftMid, leftEnd, right, rightStart, rightEnd, true, true);
+    const midOffset = Math.floor(m / 2);
+    const leftMid = leftStart + midOffset;
+    const leftLcs = computeLCSLengthsRange(left, leftStart, leftMid, right, rightStart, rightEnd, false, false);
+    const rightLcs = computeLCSLengthsRange(left, leftMid, leftEnd, right, rightStart, rightEnd, true, true);
 
-    var maxSum = -1;
-    var bestJOffset = 0;
-    for (var jOffset = 0; jOffset <= n; jOffset++) {
-        var sum = leftLcs[jOffset] + rightLcs[n - jOffset];
+    let maxSum = -1;
+    let bestJOffset = 0;
+    for (let jOffset = 0; jOffset <= n; jOffset++) {
+        const sum = leftLcs[jOffset] + rightLcs[n - jOffset];
         if (sum > maxSum) {
             maxSum = sum;
             bestJOffset = jOffset;
         }
     }
 
-    var rightMid = rightStart + bestJOffset;
+    const rightMid = rightStart + bestJOffset;
     collectLcsPairsHirschberg(left, right, leftStart, leftMid, rightStart, rightMid, pairs);
     collectLcsPairsHirschberg(left, right, leftMid, leftEnd, rightMid, rightEnd, pairs);
 }
 
 function computeCharDiff(left, right) {
-    var m = left.length, n = right.length;
+    const m = left.length, n = right.length;
 
-    var prefix = 0;
+    let prefix = 0;
     while (prefix < m && prefix < n && left[prefix] === right[prefix]) prefix++;
 
-    var suffix = 0;
+    let suffix = 0;
     while (suffix < m - prefix && suffix < n - prefix
         && left[m - 1 - suffix] === right[n - 1 - suffix]) suffix++;
 
-    var leftMatched = new Set();
-    var rightMatched = new Set();
-    for (var k = 0; k < prefix; k++) {
+    const leftMatched = new Set();
+    const rightMatched = new Set();
+    for (let k = 0; k < prefix; k++) {
         leftMatched.add(k);
         rightMatched.add(k);
     }
-    for (var k = m - suffix; k < m; k++) leftMatched.add(k);
-    for (var k = n - suffix; k < n; k++) rightMatched.add(k);
+    for (let k = m - suffix; k < m; k++) leftMatched.add(k);
+    for (let k = n - suffix; k < n; k++) rightMatched.add(k);
 
-    var ml = m - prefix - suffix;
-    var nl = n - prefix - suffix;
+    const ml = m - prefix - suffix;
+    const nl = n - prefix - suffix;
     if (ml === 0 || nl === 0) return { left: leftMatched, right: rightMatched };
 
-    var leftCore = left.slice(prefix, m - suffix);
-    var rightCore = right.slice(prefix, n - suffix);
+    const leftCore = left.slice(prefix, m - suffix);
+    const rightCore = right.slice(prefix, n - suffix);
 
     if (ml * nl > 1000000) {
-        var charPairs = [];
+        const charPairs = [];
         collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
-        for (var p = 0; p < charPairs.length; p++) {
+        for (let p = 0; p < charPairs.length; p++) {
             leftMatched.add(prefix + charPairs[p][0]);
             rightMatched.add(prefix + charPairs[p][1]);
         }
     } else {
-        var dp = [];
-        for (var i = 0; i <= ml; i++) dp[i] = new Uint32Array(nl + 1);
+        const dp = [];
+        for (let i = 0; i <= ml; i++) dp[i] = new Uint32Array(nl + 1);
 
-        for (var i = 1; i <= ml; i++) {
-            for (var j = 1; j <= nl; j++) {
+        for (let i = 1; i <= ml; i++) {
+            for (let j = 1; j <= nl; j++) {
                 if (leftCore[i - 1] === rightCore[j - 1]) {
                     dp[i][j] = dp[i - 1][j - 1] + 1;
                 } else if (dp[i - 1][j] > dp[i][j - 1]) {
@@ -223,7 +223,7 @@ function computeCharDiff(left, right) {
             }
         }
 
-        var i = ml, j = nl;
+        let i = ml, j = nl;
         while (i > 0 && j > 0) {
             if (leftCore[i - 1] === rightCore[j - 1]) {
                 leftMatched.add(prefix + i - 1);
@@ -245,10 +245,10 @@ function collectLineLcsPairs(leftLines, rightLines, pairs) {
 }
 
 function getBigrams(text) {
-    var map = Object.create(null);
+    const map = Object.create(null);
     if (text.length < 2) return { map: map, total: 0 };
-    for (var i = 0; i < text.length - 1; i++) {
-        var gram = text[i] + text[i + 1];
+    for (let i = 0; i < text.length - 1; i++) {
+        const gram = text[i] + text[i + 1];
         map[gram] = (map[gram] || 0) + 1;
     }
     return { map: map, total: text.length - 1 };
@@ -258,17 +258,17 @@ function lineSimilarity(leftLine, rightLine) {
     if (leftLine === rightLine) return 1;
     if (!leftLine.length || !rightLine.length) return 0;
 
-    var leftLen = leftLine.length;
-    var rightLen = rightLine.length;
-    var maxLen = Math.max(leftLen, rightLen);
-    var minLen = Math.min(leftLen, rightLen);
-    var lengthRatio = minLen / maxLen;
+    const leftLen = leftLine.length;
+    const rightLen = rightLine.length;
+    const maxLen = Math.max(leftLen, rightLen);
+    const minLen = Math.min(leftLen, rightLen);
+    const lengthRatio = minLen / maxLen;
     if (lengthRatio < 0.4) return 0;
 
-    var prefix = 0;
+    let prefix = 0;
     while (prefix < minLen && leftLine[prefix] === rightLine[prefix]) prefix++;
 
-    var suffix = 0;
+    let suffix = 0;
     while (
         suffix < minLen - prefix
         && leftLine[leftLen - 1 - suffix] === rightLine[rightLen - 1 - suffix]
@@ -276,61 +276,61 @@ function lineSimilarity(leftLine, rightLine) {
         suffix++;
     }
 
-    var edgeRatio = (prefix + suffix) / maxLen;
-    var leftBigrams = getBigrams(leftLine);
-    var rightBigrams = getBigrams(rightLine);
-    var intersection = 0;
-    for (var gram in leftBigrams.map) {
+    const edgeRatio = (prefix + suffix) / maxLen;
+    const leftBigrams = getBigrams(leftLine);
+    const rightBigrams = getBigrams(rightLine);
+    let intersection = 0;
+    for (let gram in leftBigrams.map) {
         if (rightBigrams.map[gram]) {
-            var leftCount = leftBigrams.map[gram];
-            var rightCount = rightBigrams.map[gram];
+            const leftCount = leftBigrams.map[gram];
+            const rightCount = rightBigrams.map[gram];
             intersection += leftCount < rightCount ? leftCount : rightCount;
         }
     }
 
-    var denominator = leftBigrams.total + rightBigrams.total;
-    var dice = denominator > 0 ? (2 * intersection) / denominator : 0;
-    var weighted = (dice * 0.65) + (edgeRatio * 0.35);
+    const denominator = leftBigrams.total + rightBigrams.total;
+    const dice = denominator > 0 ? (2 * intersection) / denominator : 0;
+    const weighted = (dice * 0.65) + (edgeRatio * 0.35);
     return weighted * (0.6 + 0.4 * lengthRatio);
 }
 
 function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, diff) {
-    var leftCount = leftEnd - leftStart;
-    var rightCount = rightEnd - rightStart;
+    const leftCount = leftEnd - leftStart;
+    const rightCount = rightEnd - rightStart;
 
     if (leftCount === 0) {
-        for (var ri = rightStart; ri < rightEnd; ri++) {
+        for (let ri = rightStart; ri < rightEnd; ri++) {
             diff.push({ type: 'added', lineIndex: ri });
         }
         return;
     }
 
     if (rightCount === 0) {
-        for (var li = leftStart; li < leftEnd; li++) {
+        for (let li = leftStart; li < leftEnd; li++) {
             diff.push({ type: 'missing', lineIndex: li });
         }
         return;
     }
 
-    var i = leftStart;
-    var j = rightStart;
+    let i = leftStart;
+    let j = rightStart;
     while (i < leftEnd && j < rightEnd) {
-        var s00 = lineSimilarity(leftLines[i], rightLines[j]);
+        const s00 = lineSimilarity(leftLines[i], rightLines[j]);
 
-        var bestRightScore = -1;
-        var bestRightSkip = 0;
-        for (var rSkip = 1; rSkip <= ALIGN_LOOKAHEAD && j + rSkip < rightEnd; rSkip++) {
-            var rScore = lineSimilarity(leftLines[i], rightLines[j + rSkip]);
+        let bestRightScore = -1;
+        let bestRightSkip = 0;
+        for (let rSkip = 1; rSkip <= ALIGN_LOOKAHEAD && j + rSkip < rightEnd; rSkip++) {
+            const rScore = lineSimilarity(leftLines[i], rightLines[j + rSkip]);
             if (rScore > bestRightScore) {
                 bestRightScore = rScore;
                 bestRightSkip = rSkip;
             }
         }
 
-        var bestLeftScore = -1;
-        var bestLeftSkip = 0;
-        for (var lSkip = 1; lSkip <= ALIGN_LOOKAHEAD && i + lSkip < leftEnd; lSkip++) {
-            var lScore = lineSimilarity(leftLines[i + lSkip], rightLines[j]);
+        let bestLeftScore = -1;
+        let bestLeftSkip = 0;
+        for (let lSkip = 1; lSkip <= ALIGN_LOOKAHEAD && i + lSkip < leftEnd; lSkip++) {
+            const lScore = lineSimilarity(leftLines[i + lSkip], rightLines[j]);
             if (lScore > bestLeftScore) {
                 bestLeftScore = lScore;
                 bestLeftSkip = lSkip;
@@ -338,7 +338,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         }
 
         if (s00 >= MODIFIED_SIMILARITY_THRESHOLD && s00 >= bestRightScore && s00 >= bestLeftScore) {
-            var charMatched = computeCharDiff(leftLines[i], rightLines[j]);
+            const charMatched = computeCharDiff(leftLines[i], rightLines[j]);
             diff.push({
                 type: 'modified',
                 leftLineIndex: i,
@@ -352,7 +352,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         }
 
         if (bestRightScore >= MODIFIED_SIMILARITY_THRESHOLD && bestRightScore >= bestLeftScore) {
-            for (var add = 0; add < bestRightSkip; add++) {
+            for (let add = 0; add < bestRightSkip; add++) {
                 diff.push({ type: 'added', lineIndex: j });
                 j++;
             }
@@ -360,15 +360,15 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         }
 
         if (bestLeftScore >= MODIFIED_SIMILARITY_THRESHOLD) {
-            for (var miss = 0; miss < bestLeftSkip; miss++) {
+            for (let miss = 0; miss < bestLeftSkip; miss++) {
                 diff.push({ type: 'missing', lineIndex: i });
                 i++;
             }
             continue;
         }
 
-        var leftRemaining = leftEnd - i;
-        var rightRemaining = rightEnd - j;
+        const leftRemaining = leftEnd - i;
+        const rightRemaining = rightEnd - j;
         if (rightRemaining > leftRemaining) {
             diff.push({ type: 'added', lineIndex: j });
             j++;
@@ -376,9 +376,9 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
             diff.push({ type: 'missing', lineIndex: i });
             i++;
         } else {
-            var fallbackSim = lineSimilarity(leftLines[i], rightLines[j]);
+            const fallbackSim = lineSimilarity(leftLines[i], rightLines[j]);
             if (fallbackSim >= MODIFIED_SIMILARITY_THRESHOLD) {
-                var charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
+                const charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
                 diff.push({
                     type: 'modified',
                     leftLineIndex: i,
@@ -409,21 +409,21 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
 }
 
 function computeLineDiff(left, right) {
-    var leftTrailing = left.endsWith('\n');
-    var rightTrailing = right.endsWith('\n');
-    var leftLines = (leftTrailing ? left.slice(0, -1) : left).split('\n');
-    var rightLines = (rightTrailing ? right.slice(0, -1) : right).split('\n');
-    var diff = [];
-    var pairs = [];
+    const leftTrailing = left.endsWith('\n');
+    const rightTrailing = right.endsWith('\n');
+    const leftLines = (leftTrailing ? left.slice(0, -1) : left).split('\n');
+    const rightLines = (rightTrailing ? right.slice(0, -1) : right).split('\n');
+    const diff = [];
+    const pairs = [];
 
     collectLineLcsPairs(leftLines, rightLines, pairs);
 
-    var leftPos = 0;
-    var rightPos = 0;
-    for (var p = 0; p < pairs.length; p++) {
-        var pair = pairs[p];
-        var leftMatch = pair[0];
-        var rightMatch = pair[1];
+    let leftPos = 0;
+    let rightPos = 0;
+    for (let p = 0; p < pairs.length; p++) {
+        const pair = pairs[p];
+        const leftMatch = pair[0];
+        const rightMatch = pair[1];
 
         appendAlignedRange(leftLines, rightLines, leftPos, leftMatch, rightPos, rightMatch, diff);
         diff.push({ type: 'match', leftLineIndex: leftMatch, rightLineIndex: rightMatch });
@@ -438,15 +438,15 @@ function computeLineDiff(left, right) {
 }
 
 function buildPanelHtml(diffResult, side) {
-    var html = '';
-    var lineNum = 1;
-    var isRight = side === 'right';
+    let html = '';
+    let lineNum = 1;
+    const isRight = side === 'right';
 
-    for (var i = 0; i < diffResult.diff.length; i++) {
-        var item = diffResult.diff[i];
+    for (let i = 0; i < diffResult.diff.length; i++) {
+        const item = diffResult.diff[i];
 
         if (item.type === 'match') {
-            var line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
+            const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
             html += '<div class="diff-line">';
             html += '<span class="diff-gutter">' + lineNum + '</span>';
             html += '<span class="diff-content';
@@ -461,27 +461,27 @@ function buildPanelHtml(diffResult, side) {
             html += '<span class="diff-gutter">' + lineNum + '</span>';
             html += '<span class="diff-content">';
             if (isRight) {
-                var j = 0;
+                let j = 0;
                 while (j < item.chars.length) {
-                    var match = item.chars[j].match;
-                    var segment = '';
+                    const match = item.chars[j].match;
+                    let segment = '';
                     while (j < item.chars.length && item.chars[j].match === match) {
                         segment += item.chars[j].c;
                         j++;
                     }
-                    var cls = match ? 'diff-match' : 'diff-mismatch';
+                    const cls = match ? 'diff-match' : 'diff-mismatch';
                     html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
                 }
             } else {
-                var lj = 0;
+                let lj = 0;
                 while (lj < item.leftChars.length) {
-                    var lmatch = item.leftChars[lj].match;
-                    var lsegment = '';
+                    const lmatch = item.leftChars[lj].match;
+                    let lsegment = '';
                     while (lj < item.leftChars.length && item.leftChars[lj].match === lmatch) {
                         lsegment += item.leftChars[lj].c;
                         lj++;
                     }
-                    var lcls = lmatch ? 'diff-match' : 'diff-mismatch';
+                    const lcls = lmatch ? 'diff-match' : 'diff-mismatch';
                     html += '<span class="' + lcls + '">' + renderWithInvisibles(lsegment, !lmatch) + '</span>';
                 }
             }
@@ -490,7 +490,7 @@ function buildPanelHtml(diffResult, side) {
             lineNum++;
         } else if (item.type === 'added') {
             if (isRight) {
-                var addedLine = diffResult.rightLines[item.lineIndex];
+                const addedLine = diffResult.rightLines[item.lineIndex];
                 html += '<div class="diff-line diff-line-mismatch">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(addedLine, true) + '</span></span>';
@@ -509,7 +509,7 @@ function buildPanelHtml(diffResult, side) {
                 html += '<span class="diff-content"></span>';
                 html += '</div>';
             } else {
-                var missingLine = diffResult.leftLines[item.lineIndex];
+                const missingLine = diffResult.leftLines[item.lineIndex];
                 html += '<div class="diff-line">';
                 html += '<span class="diff-gutter">' + lineNum + '</span>';
                 html += '<span class="diff-content">' + renderWithInvisibles(missingLine) + '</span>';
