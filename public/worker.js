@@ -85,15 +85,14 @@ self.onmessage = function (e) {
     if (e.data.type !== 'diff') return;
 
     cancelled = false;
-    const left = e.data.left;
-    const right = e.data.right;
+    const { left, right } = e.data;
 
     const diffResult = computeLineDiff(left, right);
     const totalEntries = diffResult.diff.length;
 
     let mismatchCount = 0;
     for (let i = 0; i < totalEntries; i++) {
-        const type = diffResult.diff[i].type;
+        const { type } = diffResult.diff[i];
         if (type === 'added' || type === 'missing' || type === 'modified') {
             mismatchCount++;
         }

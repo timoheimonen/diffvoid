@@ -36,11 +36,11 @@
   }
 
   window.diffvoidTheme = {
-    STORAGE_KEY: STORAGE_KEY,
-    getTheme: getTheme,
-    applyTheme: applyTheme,
-    initTheme: initTheme,
-    toggleTheme: toggleTheme
+    STORAGE_KEY,
+    getTheme,
+    applyTheme,
+    initTheme,
+    toggleTheme
   };
 
   initTheme();

@@ -203,9 +203,9 @@ function computeCharDiff(left, right) {
     if (ml * nl > 1000000) {
         const charPairs = [];
         collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
-        for (let p = 0; p < charPairs.length; p++) {
-            leftMatched.add(prefix + charPairs[p][0]);
-            rightMatched.add(prefix + charPairs[p][1]);
+        for (const pair of charPairs) {
+            leftMatched.add(prefix + pair[0]);
+            rightMatched.add(prefix + pair[1]);
         }
     } else {
         const dp = [];
@@ -420,8 +420,7 @@ function computeLineDiff(left, right) {
 
     let leftPos = 0;
     let rightPos = 0;
-    for (let p = 0; p < pairs.length; p++) {
-        const pair = pairs[p];
+    for (const pair of pairs) {
         const leftMatch = pair[0];
         const rightMatch = pair[1];
 

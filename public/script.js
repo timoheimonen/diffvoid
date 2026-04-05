@@ -92,27 +92,27 @@
         }
 
         function handleWorkerMessage(e) {
-            const data = e.data;
-            if (data.type === 'chunk') {
-                chunkBuffer.left += data.leftHtml;
-                chunkBuffer.right += data.rightHtml;
+            const { type, leftHtml, rightHtml, processed, total, mismatchCount } = e.data;
+            if (type === 'chunk') {
+                chunkBuffer.left += leftHtml;
+                chunkBuffer.right += rightHtml;
                 chunkBatchCount++;
 
-                showProgress('Processing ' + data.processed + ' of ' + data.total + ' entries...');
+                showProgress('Processing ' + processed + ' of ' + total + ' entries...');
 
                 if (chunkBatchCount >= 3) {
                     flushChunkBuffer();
                 }
-            } else if (data.type === 'done') {
+            } else if (type === 'done') {
                 flushChunkBuffer();
-                setCounter(data.mismatchCount);
+                setCounter(mismatchCount);
                 hideProgress();
                 workerActive = false;
                 isProcessing = false;
 
                 updateEmpty(right);
                 updateEmpty(left);
-            } else if (data.type === 'cancelled') {
+            } else if (type === 'cancelled') {
                 hideProgress();
                 workerActive = false;
                 isProcessing = false;
@@ -264,7 +264,7 @@
 
             let mismatchCount = 0;
             for (let i = 0; i < diffResult.diff.length; i++) {
-                const type = diffResult.diff[i].type;
+                const { type } = diffResult.diff[i];
                 if (type === 'added' || type === 'missing' || type === 'modified') {
                     mismatchCount++;
                 }
@@ -411,17 +411,18 @@
         document.addEventListener('mouseup', stopDragging);
         document.addEventListener('touchend', stopDragging);
 
-        function copyCleanText(side) {
+        async function copyCleanText(side) {
             const el = side === 'left' ? left : right;
             const text = getFieldText(el);
             const cleanText = stripInvisibleCharacters(text);
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(cleanText).then(function () {
+                try {
+                    await navigator.clipboard.writeText(cleanText);
                     showCopyFeedback(side);
-                }).catch(function () {
+                } catch (err) {
                     fallbackCopy(cleanText, side);
-                });
+                }
             } else {
                 fallbackCopy(cleanText, side);
             }
