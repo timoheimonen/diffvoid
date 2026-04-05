@@ -18,23 +18,23 @@
     document.addEventListener('DOMContentLoaded', function () {
         initTheme();
 
-        var left = document.getElementById('input-left');
-        var right = document.getElementById('input-right');
-        var rendering = false;
-        var counter = document.getElementById('mismatch-counter');
-        var copyCleanLeftBtn = document.getElementById('copy-clean-left');
-        var copyCleanRightBtn = document.getElementById('copy-clean-right');
-        var progressEl = document.getElementById('progress-indicator');
+        const left = document.getElementById('input-left');
+        const right = document.getElementById('input-right');
+        let rendering = false;
+        const counter = document.getElementById('mismatch-counter');
+        const copyCleanLeftBtn = document.getElementById('copy-clean-left');
+        const copyCleanRightBtn = document.getElementById('copy-clean-right');
+        const progressEl = document.getElementById('progress-indicator');
 
-        var workerEnabled = typeof Worker !== 'undefined';
-        var worker = null;
-        var workerActive = false;
-        var chunkBuffer = { left: '', right: '' };
-        var chunkBatchCount = 0;
-        var isProcessing = false;
-        var storedLeftText = '';
-        var storedRightText = '';
-        var MAX_LINES = 25000;
+        const workerEnabled = typeof Worker !== 'undefined';
+        let worker = null;
+        let workerActive = false;
+        let chunkBuffer = { left: '', right: '' };
+        let chunkBatchCount = 0;
+        let isProcessing = false;
+        let storedLeftText = '';
+        let storedRightText = '';
+        const MAX_LINES = 25000;
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {
@@ -70,7 +70,7 @@
         function initWorker() {
             if (!workerEnabled) return null;
             try {
-                var w = new Worker('worker.js');
+                const w = new Worker('worker.js');
                 w.onmessage = handleWorkerMessage;
                 w.onerror = function() {
                     if (worker !== w) return;
@@ -78,8 +78,8 @@
                     worker = null;
                     hideProgress();
                     showProgress('Worker failed. Using fallback...');
-                    var lt = storedLeftText;
-                    var rt = storedRightText;
+                    const lt = storedLeftText;
+                    const rt = storedRightText;
                     setTimeout(function() {
                         hideProgress();
                         compareSync(lt, rt);
@@ -92,27 +92,27 @@
         }
 
         function handleWorkerMessage(e) {
-            var data = e.data;
-            if (data.type === 'chunk') {
-                chunkBuffer.left += data.leftHtml;
-                chunkBuffer.right += data.rightHtml;
+            const { type, leftHtml, rightHtml, processed, total, mismatchCount } = e.data;
+            if (type === 'chunk') {
+                chunkBuffer.left += leftHtml;
+                chunkBuffer.right += rightHtml;
                 chunkBatchCount++;
 
-                showProgress('Processing ' + data.processed + ' of ' + data.total + ' entries...');
+                showProgress('Processing ' + processed + ' of ' + total + ' entries...');
 
                 if (chunkBatchCount >= 3) {
                     flushChunkBuffer();
                 }
-            } else if (data.type === 'done') {
+            } else if (type === 'done') {
                 flushChunkBuffer();
-                setCounter(data.mismatchCount);
+                setCounter(mismatchCount);
                 hideProgress();
                 workerActive = false;
                 isProcessing = false;
 
                 updateEmpty(right);
                 updateEmpty(left);
-            } else if (data.type === 'cancelled') {
+            } else if (type === 'cancelled') {
                 hideProgress();
                 workerActive = false;
                 isProcessing = false;
@@ -129,10 +129,10 @@
             chunkBatchCount = 0;
         }
 
-        var toggle = document.getElementById('theme-toggle');
+        const toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.addEventListener('click', toggleTheme);
 
-        var clearBtn = document.getElementById('clear-button');
+        const clearBtn = document.getElementById('clear-button');
         if (clearBtn) {
             clearBtn.addEventListener('click', function () {
                 cancelWorker();
@@ -173,9 +173,9 @@
         }
 
         function extractText(node) {
-            var text = '';
-            for (var i = 0; i < node.childNodes.length; i++) {
-                var child = node.childNodes[i];
+            let text = '';
+            for (let i = 0; i < node.childNodes.length; i++) {
+                const child = node.childNodes[i];
                 if (child.nodeType === Node.TEXT_NODE) {
                     text += child.nodeValue;
                 } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -190,13 +190,13 @@
         }
 
         function getFieldText(el) {
-            var diffLines = el.querySelectorAll('.diff-line');
+            const diffLines = el.querySelectorAll('.diff-line');
             if (diffLines.length === 0) return el.textContent || '';
-            var parts = [];
+            const parts = [];
             diffLines.forEach(function (line) {
-                var gutter = line.querySelector('.diff-gutter');
+                const gutter = line.querySelector('.diff-gutter');
                 if (gutter && gutter.textContent !== '') {
-                    var content = line.querySelector('.diff-content');
+                    const content = line.querySelector('.diff-content');
                     parts.push(content ? extractText(content) : '');
                 }
             });
@@ -204,8 +204,8 @@
         }
 
         function compare() {
-            var lt = storedLeftText || getFieldText(left);
-            var rt = storedRightText || getFieldText(right);
+            const lt = storedLeftText || getFieldText(left);
+            const rt = storedRightText || getFieldText(right);
 
             setCopyButtonVisibility(lt, rt);
 
@@ -223,9 +223,9 @@
                 return;
             }
 
-            var leftLines = lt.split('\n').length;
-            var rightLines = rt.split('\n').length;
-            var estimatedLines = Math.max(leftLines, rightLines);
+            const leftLines = lt.split('\n').length;
+            const rightLines = rt.split('\n').length;
+            const estimatedLines = Math.max(leftLines, rightLines);
 
             if (estimatedLines > MAX_LINES) {
                 cancelWorker();
@@ -258,13 +258,13 @@
         }
 
         function compareSync(lt, rt) {
-            var diffResult = computeLineDiff(lt, rt);
-            var rightHtml = buildPanelHtml(diffResult, 'right');
-            var leftHtml = buildPanelHtml(diffResult, 'left');
+            const diffResult = computeLineDiff(lt, rt);
+            const rightHtml = buildPanelHtml(diffResult, 'right');
+            const leftHtml = buildPanelHtml(diffResult, 'left');
 
-            var mismatchCount = 0;
-            for (var i = 0; i < diffResult.diff.length; i++) {
-                var type = diffResult.diff[i].type;
+            let mismatchCount = 0;
+            for (let i = 0; i < diffResult.diff.length; i++) {
+                const { type } = diffResult.diff[i];
                 if (type === 'added' || type === 'missing' || type === 'modified') {
                     mismatchCount++;
                 }
@@ -292,7 +292,7 @@
         function bindPaste(el) {
             el.addEventListener('paste', function (e) {
                 e.preventDefault();
-                var text = e.clipboardData.getData('text/plain');
+                const text = e.clipboardData.getData('text/plain');
                 el.textContent = text;
                 updateEmpty(el);
                 if (el === left) {
@@ -308,12 +308,12 @@
         bindPaste(right);
 
         function copyWithoutGutters(e, el) {
-            var sel = window.getSelection();
+            const sel = window.getSelection();
             if (!sel || sel.isCollapsed) return;
-            var range = sel.getRangeAt(0);
-            var fragment = range.cloneContents();
+            const range = sel.getRangeAt(0);
+            const fragment = range.cloneContents();
             fragment.querySelectorAll('.diff-gutter').forEach(function (g) { g.remove(); });
-            var text = fragment.textContent;
+            const text = fragment.textContent;
             e.clipboardData.setData('text/plain', text);
             e.preventDefault();
         }
@@ -325,21 +325,21 @@
         bindCopy(left);
         bindCopy(right);
 
-        var isSyncing = false;
+        let isSyncing = false;
 
         function syncScroll(src, dst) {
             if (isSyncing) return;
             isSyncing = true;
 
-            var srcHeight = src.scrollHeight - src.clientHeight;
-            var dstHeight = dst.scrollHeight - dst.clientHeight;
+            const srcHeight = src.scrollHeight - src.clientHeight;
+            const dstHeight = dst.scrollHeight - dst.clientHeight;
 
             if (srcHeight <= 0) {
                 isSyncing = false;
                 return;
             }
 
-            var scrollRatio = src.scrollTop / srcHeight;
+            const scrollRatio = src.scrollTop / srcHeight;
             dst.scrollTop = scrollRatio * dstHeight;
 
             setTimeout(function () {
@@ -355,9 +355,9 @@
             syncScroll(right, left);
         });
 
-        var divider = document.getElementById('divider');
-        var isDragging = false;
-        var mainEl = document.querySelector('main');
+        const divider = document.getElementById('divider');
+        let isDragging = false;
+        const mainEl = document.querySelector('main');
 
         function resetToDefault() {
             left.style.width = 'calc(50% - 2.5px)';
@@ -379,9 +379,9 @@
         }
 
         function updateSplitFromClientX(clientX) {
-            var mainRect = mainEl.getBoundingClientRect();
-            var x = clientX - mainRect.left;
-            var percent = (x / mainRect.width) * 100;
+            const mainRect = mainEl.getBoundingClientRect();
+            const x = clientX - mainRect.left;
+            let percent = (x / mainRect.width) * 100;
             if (percent < 15) percent = 15;
             if (percent > 85) percent = 85;
             left.style.width = 'calc(' + percent + '% - 2.5px)';
@@ -404,31 +404,32 @@
 
         document.addEventListener('touchmove', function (e) {
             if (!isDragging) return;
-            var touch = e.touches[0];
+            const touch = e.touches[0];
             updateSplitFromClientX(touch.clientX);
         }, { passive: false });
 
         document.addEventListener('mouseup', stopDragging);
         document.addEventListener('touchend', stopDragging);
 
-        function copyCleanText(side) {
-            var el = side === 'left' ? left : right;
-            var text = getFieldText(el);
-            var cleanText = stripInvisibleCharacters(text);
+        async function copyCleanText(side) {
+            const el = side === 'left' ? left : right;
+            const text = getFieldText(el);
+            const cleanText = stripInvisibleCharacters(text);
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(cleanText).then(function () {
+                try {
+                    await navigator.clipboard.writeText(cleanText);
                     showCopyFeedback(side);
-                }).catch(function () {
+                } catch (err) {
                     fallbackCopy(cleanText, side);
-                });
+                }
             } else {
                 fallbackCopy(cleanText, side);
             }
         }
 
         function fallbackCopy(text, side) {
-            var textarea = document.createElement('textarea');
+            const textarea = document.createElement('textarea');
             textarea.value = text;
             textarea.style.position = 'fixed';
             textarea.style.left = '-9999px';
@@ -444,7 +445,7 @@
         }
 
         function showCopyFeedback(side) {
-            var btn = document.getElementById('copy-clean-' + side);
+            const btn = document.getElementById('copy-clean-' + side);
             if (!btn) return;
             btn.classList.add('copy-success');
             setTimeout(function () {
