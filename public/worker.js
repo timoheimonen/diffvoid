@@ -22,19 +22,10 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
 
         if (item.type === 'match') {
             const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
-            html += '<div class="diff-line">';
-            html += '<span class="diff-gutter">' + lineNum + '</span>';
-            html += '<span class="diff-content';
-            if (isRight) html += ' diff-match';
-            html += '">' + renderWithInvisibles(line) + '</span>';
-            html += '</div>';
+            html += `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`;
             lineNum++;
         } else if (item.type === 'modified') {
-            html += '<div class="diff-line';
-            if (isRight) html += ' diff-line-mismatch';
-            html += '">';
-            html += '<span class="diff-gutter">' + lineNum + '</span>';
-            html += '<span class="diff-content">';
+            html += `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">`;
             if (isRight) {
                 let j = 0;
                 while (j < item.chars.length) {
@@ -44,8 +35,7 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
                         segment += item.chars[j].c;
                         j++;
                     }
-                    const cls = match ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + cls + '">' + renderWithInvisibles(segment, !match) + '</span>';
+                    html += `<span class="${match ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(segment, !match)}</span>`;
                 }
             } else {
                 let lj = 0;
@@ -56,39 +46,25 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
                         lsegment += item.leftChars[lj].c;
                         lj++;
                     }
-                    const lcls = lmatch ? 'diff-match' : 'diff-mismatch';
-                    html += '<span class="' + lcls + '">' + renderWithInvisibles(lsegment, !lmatch) + '</span>';
+                    html += `<span class="${lmatch ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(lsegment, !lmatch)}</span>`;
                 }
             }
-            html += '</span>';
-            html += '</div>';
+            html += '</span></div>';
             lineNum++;
         } else if (item.type === 'added') {
             if (isRight) {
                 const addedLine = diffResult.rightLines[item.lineIndex];
-                html += '<div class="diff-line diff-line-mismatch">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content"><span class="diff-mismatch">' + renderWithInvisibles(addedLine, true) + '</span></span>';
-                html += '</div>';
+                html += `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`;
                 lineNum++;
             } else {
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter"></span>';
-                html += '<span class="diff-content"></span>';
-                html += '</div>';
+                html += '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>';
             }
         } else if (item.type === 'missing') {
             if (isRight) {
-                html += '<div class="diff-line diff-line-missing">';
-                html += '<span class="diff-gutter"></span>';
-                html += '<span class="diff-content"></span>';
-                html += '</div>';
+                html += '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>';
             } else {
                 const missingLine = diffResult.leftLines[item.lineIndex];
-                html += '<div class="diff-line">';
-                html += '<span class="diff-gutter">' + lineNum + '</span>';
-                html += '<span class="diff-content">' + renderWithInvisibles(missingLine) + '</span>';
-                html += '</div>';
+                html += `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`;
                 lineNum++;
             }
         }
