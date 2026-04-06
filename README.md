@@ -2,6 +2,8 @@
 
 A secure, browser-based text comparison tool. Compare two texts side-by-side to see differences instantly. All processing happens locally in your browser — your text never leaves your device.
 
+**Live:** [diffvoid.com](https://diffvoid.com)
+
 ## Features
 
 - **100% Client-Side**: All text comparison happens in your browser. No data is sent to any server.
@@ -91,14 +93,19 @@ See [Privacy Policy](https://diffvoid.com/privacy.html), [Terms of Service](http
 
 ```
 public/
-├── index.html      # Main HTML structure
-├── script.js       # Comparison logic and UI
-├── style.css       # Styling with CSS variables
-├── favicon.svg     # Site favicon
-├── tos.html        # Terms of Service
-├── privacy.html    # Privacy Policy
-├── about.html      # About page
-└── sitemap.xml     # Sitemap
+├── index.html       # Main HTML structure
+├── script.js        # Comparison logic and UI
+├── shared-diff.js   # Shared diff rendering (invisibles, HTML generation)
+├── worker.js        # Web Worker for off-thread diff rendering
+├── theme.js         # Theme toggle and persistence
+├── style.css        # Styling with CSS variables
+├── shared.css       # Shared styles for static pages
+├── favicon.svg      # Site favicon
+├── tos.html         # Terms of Service
+├── privacy.html     # Privacy Policy
+├── about.html       # About page
+├── robots.txt       # Robots exclusion rules
+└── sitemap.xml      # Sitemap
 ```
 
 ### Running Locally
