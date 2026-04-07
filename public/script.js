@@ -70,7 +70,7 @@
         function initWorker() {
             if (!workerEnabled) return null;
             try {
-                const w = new Worker('worker.js');
+                const w = new Worker('worker.js?v=1.2.0');
                 w.onmessage = handleWorkerMessage;
                 w.onerror = function() {
                     if (worker !== w) return;
@@ -259,8 +259,8 @@
 
         function compareSync(lt, rt) {
             const diffResult = computeLineDiff(lt, rt);
-            const rightHtml = buildPanelHtml(diffResult, 'right');
-            const leftHtml = buildPanelHtml(diffResult, 'left');
+            const rightHtml = buildPanelHtml(diffResult, 'right').html;
+            const leftHtml = buildPanelHtml(diffResult, 'left').html;
 
             let mismatchCount = 0;
             for (let i = 0; i < diffResult.diff.length; i++) {

@@ -436,12 +436,14 @@ function computeLineDiff(left, right) {
     return { leftLines: leftLines, rightLines: rightLines, diff: diff };
 }
 
-function buildPanelHtml(diffResult, side) {
+function buildPanelHtml(diffResult, side, startIdx, endIdx, startLineNum) {
     let html = '';
-    let lineNum = 1;
     const isRight = side === 'right';
+    const from = startIdx || 0;
+    const to = endIdx != null ? Math.min(endIdx, diffResult.diff.length) : diffResult.diff.length;
+    let lineNum = startLineNum || 1;
 
-    for (let i = 0; i < diffResult.diff.length; i++) {
+    for (let i = from; i < to; i++) {
         const item = diffResult.diff[i];
 
         if (item.type === 'match') {
@@ -494,5 +496,5 @@ function buildPanelHtml(diffResult, side) {
         }
     }
 
-    return html;
+    return { html: html, endIdx: to, lineNum: lineNum };
 }
