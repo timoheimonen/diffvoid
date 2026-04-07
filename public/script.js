@@ -3,6 +3,9 @@
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
 (function () {
+    const APP_VERSION = window.APP_VERSION || '0.0.0';
+    const BUILD_ID = window.BUILD_ID || 'dev';
+
     function initTheme() {
         if (window.diffvoidTheme && typeof window.diffvoidTheme.initTheme === 'function') {
             window.diffvoidTheme.initTheme();
@@ -70,7 +73,8 @@
         function initWorker() {
             if (!workerEnabled) return null;
             try {
-                const w = new Worker('worker.js?v=1.2.0');
+                const workerUrl = 'worker.js?v=' + encodeURIComponent(APP_VERSION) + '&b=' + encodeURIComponent(BUILD_ID);
+                const w = new Worker(workerUrl);
                 w.onmessage = handleWorkerMessage;
                 w.onerror = function() {
                     if (worker !== w) return;

@@ -2,7 +2,10 @@
 // Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
-importScripts('shared-diff.js?v=1.2.0');
+const workerUrl = new URL(self.location.href);
+const APP_VERSION = workerUrl.searchParams.get('v') || '0.0.0';
+const BUILD_ID = workerUrl.searchParams.get('b') || 'dev';
+importScripts('shared-diff.js?v=' + encodeURIComponent(APP_VERSION) + '&b=' + encodeURIComponent(BUILD_ID));
 
 const CHUNK_SIZE = 50;
 let cancelled = false;

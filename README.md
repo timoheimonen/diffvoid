@@ -122,6 +122,24 @@ npx serve public
 
 Then visit `http://localhost:8000`
 
+### Versioning and cache busting
+
+- `public/version.base.json` is the single source of truth for `APP_VERSION`
+- `public/version.js` is generated at build time and contains:
+  - `window.APP_VERSION`
+  - `window.BUILD_ID` (`YYYY-MM-DD.<short_sha>`)
+- Generate locally with:
+
+```bash
+bash scripts/generate-version.sh
+```
+
+- Cloudflare Pages build command should run:
+
+```bash
+bash scripts/generate-version.sh
+```
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
