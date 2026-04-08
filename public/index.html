@@ -10,33 +10,61 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Secure open source online text comparison tool - compare and diff texts side by side with diffvoid.com">
+        content="Compare two texts side by side with a secure online diff tool. Detect invisible Unicode characters, highlight exact changes, and keep all processing in your browser.">
     <meta name="keywords" content="text comparison, diff, text diff, compare texts, diffvoid">
+    <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="author" content="Timo Heimonen">
-    <meta name="version" content="1.1.1">
+    <meta name="version" content="1.1.2">
     <meta name="theme-color" content="#1a1a2e">
-    <meta property="og:title" content="diffvoid.com - Secure Text Comparison">
+    <meta property="og:title" content="Diffvoid - Secure Online Text Comparison Tool">
     <meta property="og:description"
-        content="Secure open source online text comparison tool - compare and diff texts side by side">
+        content="Compare texts instantly, detect hidden Unicode characters, and keep your data private with fully browser-side diff processing.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://diffvoid.com">
-    <title>diffvoid.com</title>
+    <meta property="og:site_name" content="diffvoid.com">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:image" content="https://diffvoid.com/og-image.png">
+    <meta property="og:image:alt" content="Diffvoid secure online text comparison tool preview">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Diffvoid - Secure Online Text Comparison Tool">
+    <meta name="twitter:description"
+        content="Compare two texts side by side and detect invisible characters. All processing stays in your browser.">
+    <meta name="twitter:image" content="https://diffvoid.com/og-image.png">
+    <link rel="canonical" href="https://diffvoid.com/">
+    <title>Diffvoid - Secure Online Text Comparison Tool</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <script src="theme.js"></script>
     <link rel="stylesheet" href="style.css">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "diffvoid.com",
+            "url": "https://diffvoid.com/",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Any",
+            "description": "Secure browser-based text comparison tool for side-by-side diffs and invisible Unicode character detection.",
+            "isAccessibleForFree": true,
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+            },
+            "featureList": [
+                "Line-aware text comparison",
+                "Character-level diff highlighting",
+                "Invisible Unicode character detection",
+                "Copy text without invisible characters",
+                "Client-side processing with no uploads"
+            ]
+        }
+    </script>
 </head>
 
 <body>
     <header>
         <div class="header-left">
             <h1>diffvoid.com - your secure place to compare texts</h1>
-            <div class="header-links">
-                <a href="tos.html">Terms of Service</a>
-                <span class="link-separator">|</span>
-                <a href="privacy.html">Privacy</a>
-                <span class="link-separator">|</span>
-                <a href="about.html">About</a>
-            </div>
         </div>
         <div class="copy-clean-container">
             <div class="mismatch-counter" id="mismatch-counter" style="display: none;"></div>
@@ -86,13 +114,24 @@
             </button>
         </div>
     </header>
-    <main>
+    <main aria-label="Text comparison workspace">
         <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" data-placeholder="To this...">
         </div>
         <div class="divider" id="divider"></div>
         <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
             data-placeholder="Compare this..."></div>
     </main>
+    <section class="seo-content" aria-labelledby="seo-title">
+        <h2 id="seo-title">Compare text online with privacy-first diffing</h2>
+        <p>diffvoid.com helps you compare two texts side by side, highlight exact differences, and detect invisible
+            Unicode characters that often break code, configs, and copied content. Everything runs in your browser, so
+            your text stays on your device.</p>
+        <div class="seo-links">
+            <a href="about.html">How diffvoid works</a>
+            <a href="privacy.html">Privacy details</a>
+            <a href="tos.html">Terms of service</a>
+        </div>
+    </section>
     <script src="shared-diff.js"></script>
     <script src="script.js"></script>
 </body>

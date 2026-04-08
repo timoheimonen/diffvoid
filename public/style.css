@@ -472,3 +472,59 @@ body.resizing .diff-gutter {
 [data-theme="dark"] .invisible-regular-space {
     background-color: rgba(248, 113, 113, 0.5);
 }
+
+.seo-content {
+    flex-shrink: 0;
+    padding: 0.75rem 1rem 0.9rem;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--field-bg);
+}
+
+.seo-content h2 {
+    font-size: 12px;
+    line-height: 1.35;
+    margin-bottom: 0.35rem;
+    color: var(--text-color);
+}
+
+.seo-content p {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-color);
+    opacity: 0.9;
+}
+
+.seo-links {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.seo-links a {
+    color: var(--text-color);
+    font-size: 11px;
+    text-decoration: none;
+    opacity: 0.8;
+}
+
+.seo-links a:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+    .seo-content {
+        padding: 0.75rem 0.85rem 0.85rem;
+    }
+
+    .seo-content h2 {
+        font-size: 11px;
+    }
+
+    .seo-content p,
+    .seo-links a {
+        font-size: 10px;
+        line-height: 1.45;
+    }
+}
