@@ -409,10 +409,8 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
 }
 
 function computeLineDiff(left, right) {
-    const leftTrailing = left.endsWith('\n');
-    const rightTrailing = right.endsWith('\n');
-    const leftLines = (leftTrailing ? left.slice(0, -1) : left).split('\n');
-    const rightLines = (rightTrailing ? right.slice(0, -1) : right).split('\n');
+    const leftLines = left.split('\n');
+    const rightLines = right.split('\n');
     const diff = [];
     const pairs = [];
 

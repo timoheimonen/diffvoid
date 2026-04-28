@@ -210,13 +210,24 @@
             setCopyButtonVisibility(lt, rt);
 
             if (!lt.length || !rt.length) {
-                if (rt.length && right.querySelector('.diff-line')) {
-                    rendering = true;
-                    right.innerHTML = '';
-                    rendering = false;
+                cancelWorker();
+                rendering = true;
+                if (lt.length) {
+                    left.textContent = lt;
+                    storedLeftText = lt;
+                } else {
+                    left.innerHTML = '';
+                    storedLeftText = '';
                 }
-                if (!lt.length) { storedLeftText = ''; }
-                if (!rt.length) { storedRightText = ''; }
+                if (rt.length) {
+                    right.textContent = rt;
+                    storedRightText = rt;
+                } else {
+                    right.innerHTML = '';
+                    storedRightText = '';
+                }
+                rendering = false;
+                updateEmpty(left);
                 updateEmpty(right);
                 hideCounter();
                 hideProgress();
@@ -312,8 +323,21 @@
             if (!sel || sel.isCollapsed) return;
             const range = sel.getRangeAt(0);
             const fragment = range.cloneContents();
-            fragment.querySelectorAll('.diff-gutter').forEach(function (g) { g.remove(); });
-            const text = fragment.textContent;
+            const diffLines = fragment.querySelectorAll('.diff-line');
+            let text = '';
+            if (diffLines.length) {
+                const parts = [];
+                diffLines.forEach(function (line) {
+                    const gutter = line.querySelector('.diff-gutter');
+                    const content = line.querySelector('.diff-content');
+                    if (gutter && gutter.textContent === '' && (!content || content.textContent === '')) return;
+                    parts.push(content ? extractText(content) : '');
+                });
+                text = parts.join('\n');
+            } else {
+                fragment.querySelectorAll('.diff-gutter').forEach(function (g) { g.remove(); });
+                text = extractText(fragment);
+            }
             e.clipboardData.setData('text/plain', text);
             e.preventDefault();
         }
