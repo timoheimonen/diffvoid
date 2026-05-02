@@ -34,7 +34,6 @@
         let isProcessing = false;
         let storedLeftText = '';
         let storedRightText = '';
-        const MAX_LINES = 25000;
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {
@@ -92,7 +91,7 @@
         }
 
         function handleWorkerMessage(e) {
-            const { type, leftHtml, rightHtml, processed, total, mismatchCount } = e.data;
+            const { type, leftHtml, rightHtml, processed, total, mismatchCount, message } = e.data;
             if (type === 'chunk') {
                 chunkBuffer.left += leftHtml;
                 chunkBuffer.right += rightHtml;
@@ -115,6 +114,12 @@
             } else if (type === 'cancelled') {
                 hideProgress();
                 workerActive = false;
+                isProcessing = false;
+            } else if (type === 'computing') {
+                showProgress('Computing diff...');
+            } else if (type === 'error') {
+                cancelWorker();
+                showProgress(message || 'Comparison failed.');
                 isProcessing = false;
             }
         }
@@ -159,7 +164,7 @@
         function setCounter(mismatchCount) {
             if (!counter) return;
             if (mismatchCount > 0) {
-                counter.textContent = mismatchCount + ' line' + (mismatchCount === 1 ? '' : 's') + ' different';
+                counter.textContent = mismatchCount + ' difference row' + (mismatchCount === 1 ? '' : 's');
                 counter.classList.remove('all-match');
             } else {
                 counter.textContent = '100% Match';
@@ -234,15 +239,15 @@
                 return;
             }
 
-            const leftLines = lt.split('\n').length;
-            const rightLines = rt.split('\n').length;
-            const estimatedLines = Math.max(leftLines, rightLines);
-
-            if (estimatedLines > MAX_LINES) {
+            const validation = validateDiffInput(lt, rt);
+            if (!validation.ok) {
                 cancelWorker();
-                showProgress('File too large. Maximum ' + MAX_LINES.toLocaleString() + ' lines supported.');
+                hideCounter();
+                showProgress(validation.message);
                 return;
             }
+
+            const estimatedLines = validation.estimatedLines;
 
             if (workerEnabled && estimatedLines > 100) {
                 cancelWorker();
@@ -269,19 +274,20 @@
         }
 
         function compareSync(lt, rt) {
-            const diffResult = computeLineDiff(lt, rt);
+            let diffResult;
+            try {
+                diffResult = computeLineDiff(lt, rt);
+            } catch (err) {
+                hideCounter();
+                showProgress(err && err.message ? err.message : 'Comparison failed.');
+                return;
+            }
             const rightHtml = buildPanelHtml(diffResult, 'right');
             const leftHtml = buildPanelHtml(diffResult, 'left');
-
-            let mismatchCount = 0;
-            for (let i = 0; i < diffResult.diff.length; i++) {
-                const { type } = diffResult.diff[i];
-                if (type === 'added' || type === 'missing' || type === 'modified') {
-                    mismatchCount++;
-                }
-            }
+            const mismatchCount = countDifferenceRows(diffResult);
 
             setCounter(mismatchCount);
+            hideProgress();
 
             rendering = true;
             right.innerHTML = rightHtml;
