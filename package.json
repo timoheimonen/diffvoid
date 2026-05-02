@@ -1,0 +1,10 @@
+{
+  "name": "diffvoid",
+  "version": "1.2.1",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test",
+    "perf": "node scripts/perf-diff.js"
+  }
+}

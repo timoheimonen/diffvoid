@@ -15,7 +15,7 @@ A secure, browser-based text comparison tool. Compare two texts side-by-side to 
 - **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
 - **Web Worker Processing**: Comparison runs in a background Web Worker to keep the UI responsive. Falls back to synchronous processing if workers are unavailable.
 - **Chunked Rendering**: Large diffs are rendered in batches to prevent browser freezing.
-- **Input Limit**: Maximum 25,000 lines per side enforced to maintain performance.
+- **Input Limits**: Maximum 25,000 lines, 2,000,000 characters per side, and 100,000 characters per line enforced to maintain performance.
 - **Automatic Algorithm Switching**: Character-level diff uses DP (LCS matrix) for typical input sizes and Hirschberg (linear memory) for very large inputs.
 - **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
 
@@ -65,11 +65,21 @@ The tool highlights these commonly problematic invisible Unicode characters:
 
 Uses line sequence alignment with an LCS/heuristic approach:
 - **Line-level diff**: Matching blocks stay aligned even when lines are inserted or deleted
-- **Character-level diff**: For modified lines, detailed character comparison shows exact differences
+- **Short-line heuristics**: Compact edits such as `x=1` to `x=2` stay aligned as modified rows instead of add/remove pairs
+- **Character-level diff**: For modified lines, detailed grapheme-aware character comparison shows exact differences
+- **Difference rows**: The counter reports changed visual diff rows, including modified, added, and missing rows
 
 **Character-level algorithms**:
 - **DP (LCS matrix)**: Dynamic programming approach using a full Longest Common Subsequence matrix. Fast and accurate for typical text sizes.
 - **Hirschberg (linear memory)**: Hirschberg's divide-and-conquer algorithm with O(n) space complexity. Automatically used for very large inputs to reduce memory use.
+- **Grapheme segmentation**: Uses `Intl.Segmenter` when available so emoji and combining-mark edits are not split into broken UTF-16 halves.
+
+### Verification
+
+```bash
+npm test       # behavior and rendering tests
+npm run perf   # performance checks for large and high-change inputs
+```
 
 ### Browser Compatibility
 

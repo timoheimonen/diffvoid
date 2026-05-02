@@ -20,7 +20,7 @@
   <main>
     <header>
       <h1>About diffvoid.com</h1>
-      <div class="meta">Version 1.1.2</div>
+      <div class="meta">Version 1.2.1</div>
     </header>
 
     <div class="home">
@@ -59,13 +59,14 @@
       <h2>How It Works</h2>
       <p>The tool aligns lines using an LCS/heuristic strategy so matching blocks stay aligned even when lines are
         inserted or removed in the middle.</p>
-      <p>Within aligned modified lines, a character-level diff highlights exact differences.</p>
+      <p>Within aligned modified lines, a grapheme-aware character-level diff highlights exact differences.</p>
       <p>Character-level processing switches automatically between two internal algorithms:</p>
       <ul>
         <li><strong>DP (LCS matrix)</strong> for typical text sizes.</li>
         <li><strong>Hirschberg (linear memory)</strong> for very large inputs.</li>
       </ul>
-      <p>Because comparison is fully browser-side, a safe practical limit is around 25,000 lines per side.</p>
+      <p>Because comparison is fully browser-side, safe practical limits are 25,000 lines, 2,000,000 characters per
+        side, and 100,000 characters per line.</p>
       <p>All computation happens client-side using JavaScript. There is no backend processing your text.</p>
     </section>
 
@@ -90,6 +91,7 @@
         <li><strong>Modified lines</strong>: Red background with red characters showing exact differences.</li>
         <li><strong>Added lines</strong>: Red background - appears only on the right side.</li>
         <li><strong>Missing lines</strong>: Red background - appears only on the left side.</li>
+        <li><strong>Difference counter</strong>: Counts changed visual rows: modified, added, and missing rows.</li>
         <li><strong>Invisible characters</strong>: Shown as symbols like <code>|</code>, <code>[ZWSP]</code>, or red
           boxes for spaces in diffs.</li>
       </ul>

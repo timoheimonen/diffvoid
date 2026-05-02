@@ -100,16 +100,75 @@ function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function buildCharArray(text, matched) {
+const DIFF_LIMITS = {
+    maxLines: 25000,
+    maxChars: 2000000,
+    maxLineChars: 100000
+};
+
+const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
+const SHORT_LINE_SIMILARITY_THRESHOLD = 0.5;
+const SHORT_LINE_MAX_UNITS = 32;
+const ALIGN_LOOKAHEAD = 4;
+let graphemeSegmenter = null;
+
+function validateDiffInput(left, right) {
+    if (left.length > DIFF_LIMITS.maxChars || right.length > DIFF_LIMITS.maxChars) {
+        return {
+            ok: false,
+            message: 'Text too large. Maximum ' + DIFF_LIMITS.maxChars.toLocaleString() + ' characters per side supported.'
+        };
+    }
+
+    const leftLines = left.split('\n');
+    const rightLines = right.split('\n');
+    const estimatedLines = Math.max(leftLines.length, rightLines.length);
+    if (estimatedLines > DIFF_LIMITS.maxLines) {
+        return {
+            ok: false,
+            message: 'File too large. Maximum ' + DIFF_LIMITS.maxLines.toLocaleString() + ' lines supported.'
+        };
+    }
+
+    for (let i = 0; i < leftLines.length; i++) {
+        if (leftLines[i].length > DIFF_LIMITS.maxLineChars) {
+            return {
+                ok: false,
+                message: 'Line too long. Maximum ' + DIFF_LIMITS.maxLineChars.toLocaleString() + ' characters per line supported.'
+            };
+        }
+    }
+
+    for (let i = 0; i < rightLines.length; i++) {
+        if (rightLines[i].length > DIFF_LIMITS.maxLineChars) {
+            return {
+                ok: false,
+                message: 'Line too long. Maximum ' + DIFF_LIMITS.maxLineChars.toLocaleString() + ' characters per line supported.'
+            };
+        }
+    }
+
+    return { ok: true, leftLines: leftLines, rightLines: rightLines, estimatedLines: estimatedLines };
+}
+
+function splitDiffUnits(text) {
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        if (!graphemeSegmenter) {
+            graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        }
+        return Array.from(graphemeSegmenter.segment(text), function (item) { return item.segment; });
+    }
+
+    return Array.from(text);
+}
+
+function buildUnitArray(units, matched) {
     const result = [];
-    for (let i = 0; i < text.length; i++) {
-        result.push({ c: text[i], match: matched.has(i) });
+    for (let i = 0; i < units.length; i++) {
+        result.push({ c: units[i], match: matched.has(i) });
     }
     return result;
 }
-
-const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
-const ALIGN_LOOKAHEAD = 4;
 
 function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rightEnd, reverseLeft, reverseRight) {
     const m = leftEnd - leftStart;
@@ -175,14 +234,16 @@ function collectLcsPairsHirschberg(left, right, leftStart, leftEnd, rightStart, 
 }
 
 function computeCharDiff(left, right) {
-    const m = left.length, n = right.length;
+    const leftUnits = splitDiffUnits(left);
+    const rightUnits = splitDiffUnits(right);
+    const m = leftUnits.length, n = rightUnits.length;
 
     let prefix = 0;
-    while (prefix < m && prefix < n && left[prefix] === right[prefix]) prefix++;
+    while (prefix < m && prefix < n && leftUnits[prefix] === rightUnits[prefix]) prefix++;
 
     let suffix = 0;
     while (suffix < m - prefix && suffix < n - prefix
-        && left[m - 1 - suffix] === right[n - 1 - suffix]) suffix++;
+        && leftUnits[m - 1 - suffix] === rightUnits[n - 1 - suffix]) suffix++;
 
     const leftMatched = new Set();
     const rightMatched = new Set();
@@ -195,10 +256,17 @@ function computeCharDiff(left, right) {
 
     const ml = m - prefix - suffix;
     const nl = n - prefix - suffix;
-    if (ml === 0 || nl === 0) return { left: leftMatched, right: rightMatched };
+    if (ml === 0 || nl === 0) {
+        return {
+            left: leftMatched,
+            right: rightMatched,
+            leftUnits: leftUnits,
+            rightUnits: rightUnits
+        };
+    }
 
-    const leftCore = left.slice(prefix, m - suffix);
-    const rightCore = right.slice(prefix, n - suffix);
+    const leftCore = leftUnits.slice(prefix, m - suffix);
+    const rightCore = rightUnits.slice(prefix, n - suffix);
 
     if (ml * nl > 1000000) {
         const charPairs = [];
@@ -237,7 +305,12 @@ function computeCharDiff(left, right) {
         }
     }
 
-    return { left: leftMatched, right: rightMatched };
+    return {
+        left: leftMatched,
+        right: rightMatched,
+        leftUnits: leftUnits,
+        rightUnits: rightUnits
+    };
 }
 
 function collectLineLcsPairs(leftLines, rightLines, pairs) {
@@ -252,6 +325,58 @@ function getBigrams(text) {
         map[gram] = (map[gram] || 0) + 1;
     }
     return { map: map, total: text.length - 1 };
+}
+
+function boundedEditDistanceSimilarity(leftUnits, rightUnits) {
+    const m = leftUnits.length;
+    const n = rightUnits.length;
+    const maxLen = Math.max(m, n);
+    if (maxLen === 0) return 1;
+
+    let prev = new Uint16Array(n + 1);
+    let curr = new Uint16Array(n + 1);
+    for (let j = 0; j <= n; j++) prev[j] = j;
+
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const cost = leftUnits[i - 1] === rightUnits[j - 1] ? 0 : 1;
+            const deletion = prev[j] + 1;
+            const insertion = curr[j - 1] + 1;
+            const substitution = prev[j - 1] + cost;
+            curr[j] = Math.min(deletion, insertion, substitution);
+        }
+        const tmp = prev;
+        prev = curr;
+        curr = tmp;
+    }
+
+    return 1 - (prev[n] / maxLen);
+}
+
+function shortLineSimilarity(leftLine, rightLine) {
+    const leftUnits = splitDiffUnits(leftLine);
+    const rightUnits = splitDiffUnits(rightLine);
+    const maxUnits = Math.max(leftUnits.length, rightUnits.length);
+    if (maxUnits > SHORT_LINE_MAX_UNITS) return 0;
+    return boundedEditDistanceSimilarity(leftUnits, rightUnits);
+}
+
+function modifiedLineScore(leftLine, rightLine) {
+    const similarity = lineSimilarity(leftLine, rightLine);
+    const shortSimilarity = shortLineSimilarity(leftLine, rightLine);
+    return Math.max(similarity, shortSimilarity);
+}
+
+function isModifiedLineCandidate(leftLine, rightLine, score) {
+    if (score >= MODIFIED_SIMILARITY_THRESHOLD) return true;
+
+    const leftUnits = splitDiffUnits(leftLine);
+    const rightUnits = splitDiffUnits(rightLine);
+    const maxUnits = Math.max(leftUnits.length, rightUnits.length);
+    if (maxUnits > SHORT_LINE_MAX_UNITS) return false;
+
+    return score >= SHORT_LINE_SIMILARITY_THRESHOLD;
 }
 
 function lineSimilarity(leftLine, rightLine) {
@@ -315,12 +440,12 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
     let i = leftStart;
     let j = rightStart;
     while (i < leftEnd && j < rightEnd) {
-        const s00 = lineSimilarity(leftLines[i], rightLines[j]);
+        const s00 = modifiedLineScore(leftLines[i], rightLines[j]);
 
         let bestRightScore = -1;
         let bestRightSkip = 0;
         for (let rSkip = 1; rSkip <= ALIGN_LOOKAHEAD && j + rSkip < rightEnd; rSkip++) {
-            const rScore = lineSimilarity(leftLines[i], rightLines[j + rSkip]);
+            const rScore = modifiedLineScore(leftLines[i], rightLines[j + rSkip]);
             if (rScore > bestRightScore) {
                 bestRightScore = rScore;
                 bestRightSkip = rSkip;
@@ -330,28 +455,28 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         let bestLeftScore = -1;
         let bestLeftSkip = 0;
         for (let lSkip = 1; lSkip <= ALIGN_LOOKAHEAD && i + lSkip < leftEnd; lSkip++) {
-            const lScore = lineSimilarity(leftLines[i + lSkip], rightLines[j]);
+            const lScore = modifiedLineScore(leftLines[i + lSkip], rightLines[j]);
             if (lScore > bestLeftScore) {
                 bestLeftScore = lScore;
                 bestLeftSkip = lSkip;
             }
         }
 
-        if (s00 >= MODIFIED_SIMILARITY_THRESHOLD && s00 >= bestRightScore && s00 >= bestLeftScore) {
+        if (isModifiedLineCandidate(leftLines[i], rightLines[j], s00) && s00 >= bestRightScore && s00 >= bestLeftScore) {
             const charMatched = computeCharDiff(leftLines[i], rightLines[j]);
             diff.push({
                 type: 'modified',
                 leftLineIndex: i,
                 rightLineIndex: j,
-                leftChars: buildCharArray(leftLines[i], charMatched.left),
-                chars: buildCharArray(rightLines[j], charMatched.right)
+                leftChars: buildUnitArray(charMatched.leftUnits, charMatched.left),
+                chars: buildUnitArray(charMatched.rightUnits, charMatched.right)
             });
             i++;
             j++;
             continue;
         }
 
-        if (bestRightScore >= MODIFIED_SIMILARITY_THRESHOLD && bestRightScore >= bestLeftScore) {
+        if (isModifiedLineCandidate(leftLines[i], rightLines[j + bestRightSkip], bestRightScore) && bestRightScore >= bestLeftScore) {
             for (let add = 0; add < bestRightSkip; add++) {
                 diff.push({ type: 'added', lineIndex: j });
                 j++;
@@ -359,7 +484,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
             continue;
         }
 
-        if (bestLeftScore >= MODIFIED_SIMILARITY_THRESHOLD) {
+        if (isModifiedLineCandidate(leftLines[i + bestLeftSkip], rightLines[j], bestLeftScore)) {
             for (let miss = 0; miss < bestLeftSkip; miss++) {
                 diff.push({ type: 'missing', lineIndex: i });
                 i++;
@@ -376,15 +501,15 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
             diff.push({ type: 'missing', lineIndex: i });
             i++;
         } else {
-            const fallbackSim = lineSimilarity(leftLines[i], rightLines[j]);
-            if (fallbackSim >= MODIFIED_SIMILARITY_THRESHOLD) {
+            const fallbackSim = modifiedLineScore(leftLines[i], rightLines[j]);
+            if (isModifiedLineCandidate(leftLines[i], rightLines[j], fallbackSim)) {
                 const charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
                 diff.push({
                     type: 'modified',
                     leftLineIndex: i,
                     rightLineIndex: j,
-                    leftChars: buildCharArray(leftLines[i], charMatchedFallback.left),
-                    chars: buildCharArray(rightLines[j], charMatchedFallback.right)
+                    leftChars: buildUnitArray(charMatchedFallback.leftUnits, charMatchedFallback.left),
+                    chars: buildUnitArray(charMatchedFallback.rightUnits, charMatchedFallback.right)
                 });
                 i++;
                 j++;
@@ -409,8 +534,13 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
 }
 
 function computeLineDiff(left, right) {
-    const leftLines = left.split('\n');
-    const rightLines = right.split('\n');
+    const validated = validateDiffInput(left, right);
+    if (!validated.ok) {
+        throw new Error(validated.message);
+    }
+
+    const leftLines = validated.leftLines;
+    const rightLines = validated.rightLines;
     const diff = [];
     const pairs = [];
 
@@ -434,63 +564,114 @@ function computeLineDiff(left, right) {
     return { leftLines: leftLines, rightLines: rightLines, diff: diff };
 }
 
-function buildPanelHtml(diffResult, side) {
-    let html = '';
-    let lineNum = 1;
-    const isRight = side === 'right';
-
+function countDifferenceRows(diffResult) {
+    let count = 0;
     for (let i = 0; i < diffResult.diff.length; i++) {
-        const item = diffResult.diff[i];
-
-        if (item.type === 'match') {
-            const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
-            html += `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`;
-            lineNum++;
-        } else if (item.type === 'modified') {
-            html += `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">`;
-            if (isRight) {
-                let j = 0;
-                while (j < item.chars.length) {
-                    const match = item.chars[j].match;
-                    let segment = '';
-                    while (j < item.chars.length && item.chars[j].match === match) {
-                        segment += item.chars[j].c;
-                        j++;
-                    }
-                    html += `<span class="${match ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(segment, !match)}</span>`;
-                }
-            } else {
-                let lj = 0;
-                while (lj < item.leftChars.length) {
-                    const lmatch = item.leftChars[lj].match;
-                    let lsegment = '';
-                    while (lj < item.leftChars.length && item.leftChars[lj].match === lmatch) {
-                        lsegment += item.leftChars[lj].c;
-                        lj++;
-                    }
-                    html += `<span class="${lmatch ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(lsegment, !lmatch)}</span>`;
-                }
-            }
-            html += '</span></div>';
-            lineNum++;
-        } else if (item.type === 'added') {
-            if (isRight) {
-                const addedLine = diffResult.rightLines[item.lineIndex];
-                html += `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`;
-                lineNum++;
-            } else {
-                html += '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>';
-            }
-        } else if (item.type === 'missing') {
-            if (isRight) {
-                html += '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>';
-            } else {
-                const missingLine = diffResult.leftLines[item.lineIndex];
-                html += `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`;
-                lineNum++;
-            }
+        const type = diffResult.diff[i].type;
+        if (type === 'added' || type === 'missing' || type === 'modified') {
+            count++;
         }
     }
+    return count;
+}
 
+function itemConsumesLineNumber(item, isRight) {
+    return item.type === 'match' || item.type === 'modified'
+        || (item.type === 'added' && isRight) || (item.type === 'missing' && !isRight);
+}
+
+function getPanelLineNumberAt(diffResult, side, startIdx) {
+    let lineNum = 1;
+    const isRight = side === 'right';
+    for (let i = 0; i < startIdx && i < diffResult.diff.length; i++) {
+        if (itemConsumesLineNumber(diffResult.diff[i], isRight)) {
+            lineNum++;
+        }
+    }
+    return lineNum;
+}
+
+function renderMatchedUnits(units) {
+    let html = '';
+    let i = 0;
+    while (i < units.length) {
+        const match = units[i].match;
+        let segment = '';
+        while (i < units.length && units[i].match === match) {
+            segment += units[i].c;
+            i++;
+        }
+        html += `<span class="${match ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(segment, !match)}</span>`;
+    }
     return html;
+}
+
+function renderPanelEntry(diffResult, item, side, lineNum) {
+    const isRight = side === 'right';
+
+    if (item.type === 'match') {
+        const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
+        return {
+            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (item.type === 'modified') {
+        const units = isRight ? item.chars : item.leftChars;
+        return {
+            html: `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderMatchedUnits(units)}</span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (item.type === 'added') {
+        if (!isRight) {
+            return {
+                html: '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
+                lineNum: lineNum
+            };
+        }
+
+        const addedLine = diffResult.rightLines[item.lineIndex];
+        return {
+            html: `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (item.type === 'missing') {
+        if (isRight) {
+            return {
+                html: '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
+                lineNum: lineNum
+            };
+        }
+
+        const missingLine = diffResult.leftLines[item.lineIndex];
+        return {
+            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    return { html: '', lineNum: lineNum };
+}
+
+function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
+    let html = '';
+    let lineNum = getPanelLineNumberAt(diffResult, side, startIdx);
+    const safeEnd = Math.min(endIdx, diffResult.diff.length);
+
+    for (let i = startIdx; i < safeEnd; i++) {
+        const rendered = renderPanelEntry(diffResult, diffResult.diff[i], side, lineNum);
+        html += rendered.html;
+        lineNum = rendered.lineNum;
+    }
+
+    return { html: html, endIdx: safeEnd };
+}
+
+function buildPanelHtml(diffResult, side) {
+    return buildPanelHtmlRange(diffResult, side, 0, diffResult.diff.length).html;
 }
