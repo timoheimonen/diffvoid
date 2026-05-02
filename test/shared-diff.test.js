@@ -14,9 +14,12 @@ this.buildPanelHtml = buildPanelHtml;
 this.buildPanelHtmlRange = buildPanelHtmlRange;
 this.countDifferenceRows = countDifferenceRows;
 this.hasInvisibleCharacters = hasInvisibleCharacters;
+this.hasConfusableCharacters = hasConfusableCharacters;
 this.stripInvisibleCharacters = stripInvisibleCharacters;
 this.validateDiffInput = validateDiffInput;
 this.lineSimilarity = lineSimilarity;
+this.computeMyersRanges = computeMyersRanges;
+this.renderWithInvisibles = renderWithInvisibles;
 `, context);
     return context;
 }
@@ -47,11 +50,56 @@ function reconstructed(result) {
     return { left: left.join('\n'), right: right.join('\n') };
 }
 
+function editDistanceFromRanges(ranges) {
+    let distance = 0;
+    for (const range of ranges) {
+        if (range.type === 'delete') {
+            distance += range.leftEnd - range.leftStart;
+        } else if (range.type === 'insert') {
+            distance += range.rightEnd - range.rightStart;
+        }
+    }
+    return distance;
+}
+
+function lcsEditDistance(left, right) {
+    const dp = Array.from({ length: left.length + 1 }, function () {
+        return new Array(right.length + 1).fill(0);
+    });
+
+    for (let i = 1; i <= left.length; i++) {
+        for (let j = 1; j <= right.length; j++) {
+            if (left[i - 1] === right[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+
+    return left.length + right.length - (2 * dp[left.length][right.length]);
+}
+
 test('line diff handles equal, added, missing, and modified rows', function () {
     assert.deepEqual(types('a\nb\nc', 'a\nb\nc'), ['match', 'match', 'match']);
     assert.deepEqual(types('a\nc', 'a\nb\nc'), ['match', 'added', 'match']);
     assert.deepEqual(types('a\nb\nc', 'a\nc'), ['match', 'missing', 'match']);
     assert.deepEqual(types('alpha\nbeta\ngamma', 'alpha\nbeto\ngamma'), ['match', 'modified', 'match']);
+});
+
+test('Myers ranges produce shortest edit scripts for small inputs', function () {
+    const cases = [
+        [['a', 'b', 'c'], ['a', 'x', 'b', 'c']],
+        [['a', 'b', 'c'], ['b', 'a', 'c']],
+        [['a', 'b', 'a', 'c'], ['a', 'a', 'b', 'c']],
+        [['one', 'two', 'three'], ['zero', 'one', 'two!', 'three']],
+        [['x', 'y', 'z'], ['a', 'b', 'c']]
+    ];
+
+    for (const [left, right] of cases) {
+        const ranges = diff.computeMyersRanges(left, right, { maxEditDistance: 100 });
+        assert.equal(editDistanceFromRanges(ranges), lcsEditDistance(left, right));
+    }
 });
 
 test('short same-position row edits are treated as modified rows', function () {
@@ -100,11 +148,38 @@ test('invisible character detection and clean copy normalization work', function
     assert.equal(diff.stripInvisibleCharacters('a\u200Bb\u00A0c\uFEFF'), 'a b c');
 });
 
+test('confusable characters are detected and rendered with explanatory tooltips', function () {
+    assert.equal(diff.hasConfusableCharacters('Latin A'), false);
+    assert.equal(diff.hasConfusableCharacters('Cyrillic \u0410'), true);
+
+    const html = diff.renderWithInvisibles('A\u0410\u03BF', true);
+    assert.match(html, /class="confusable-char confusable-cyrillic-a-cap"/);
+    assert.match(html, /title="Cyrillic capital a \(U\+0410\), looks like Latin A"/);
+    assert.match(html, /class="confusable-char confusable-greek-omicron"/);
+    assert.match(html, /data-char="&#x410;"/);
+});
+
+test('confusable diffs explain visually similar changed characters', function () {
+    const result = diff.computeLineDiff('A', '\u0410');
+    assert.equal(result.diff[0].type, 'modified');
+
+    const rightHtml = diff.buildPanelHtml(result, 'right');
+    assert.match(rightHtml, /confusable-char/);
+    assert.match(rightHtml, /looks like Latin A/);
+});
+
 test('input validation rejects excessive character, line, and line-length inputs', function () {
     assert.equal(diff.validateDiffInput('a', 'b').ok, true);
     assert.match(diff.validateDiffInput('x'.repeat(2000001), 'b').message, /Maximum 2,000,000 characters/);
     assert.match(diff.validateDiffInput(Array.from({ length: 25001 }, function () { return 'x'; }).join('\n'), 'b').message, /Maximum 25,000 lines/);
     assert.match(diff.validateDiffInput('x'.repeat(100001), 'b').message, /Maximum 100,000 characters per line/);
+    assert.match(
+        diff.validateDiffInput(
+            Array.from({ length: 6001 }, function (_, index) { return 'left ' + index; }).join('\n'),
+            Array.from({ length: 6001 }, function (_, index) { return 'right ' + index; }).join('\n')
+        ).message,
+        /too different/
+    );
 });
 
 test('chunked panel rendering matches full panel rendering', function () {

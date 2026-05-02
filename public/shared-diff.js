@@ -24,6 +24,57 @@ const INVISIBLE_RENDER_META = {
     0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)' }
 };
 
+const CONFUSABLE_RENDER_META = {
+    0x0391: { cls: 'confusable-greek-alpha-cap', title: 'Greek capital alpha (U+0391), looks like Latin A' },
+    0x0392: { cls: 'confusable-greek-beta-cap', title: 'Greek capital beta (U+0392), looks like Latin B' },
+    0x0395: { cls: 'confusable-greek-epsilon-cap', title: 'Greek capital epsilon (U+0395), looks like Latin E' },
+    0x0396: { cls: 'confusable-greek-zeta-cap', title: 'Greek capital zeta (U+0396), looks like Latin Z' },
+    0x0397: { cls: 'confusable-greek-eta-cap', title: 'Greek capital eta (U+0397), looks like Latin H' },
+    0x0399: { cls: 'confusable-greek-iota-cap', title: 'Greek capital iota (U+0399), looks like Latin I' },
+    0x039A: { cls: 'confusable-greek-kappa-cap', title: 'Greek capital kappa (U+039A), looks like Latin K' },
+    0x039C: { cls: 'confusable-greek-mu-cap', title: 'Greek capital mu (U+039C), looks like Latin M' },
+    0x039D: { cls: 'confusable-greek-nu-cap', title: 'Greek capital nu (U+039D), looks like Latin N' },
+    0x039F: { cls: 'confusable-greek-omicron-cap', title: 'Greek capital omicron (U+039F), looks like Latin O' },
+    0x03A1: { cls: 'confusable-greek-rho-cap', title: 'Greek capital rho (U+03A1), looks like Latin P' },
+    0x03A4: { cls: 'confusable-greek-tau-cap', title: 'Greek capital tau (U+03A4), looks like Latin T' },
+    0x03A7: { cls: 'confusable-greek-chi-cap', title: 'Greek capital chi (U+03A7), looks like Latin X' },
+    0x03BF: { cls: 'confusable-greek-omicron', title: 'Greek small omicron (U+03BF), looks like Latin o' },
+    0x03C1: { cls: 'confusable-greek-rho', title: 'Greek small rho (U+03C1), looks like Latin p' },
+    0x03C7: { cls: 'confusable-greek-chi', title: 'Greek small chi (U+03C7), looks like Latin x' },
+    0x0406: { cls: 'confusable-cyrillic-i-cap', title: 'Cyrillic capital byelorussian-ukrainian i (U+0406), looks like Latin I' },
+    0x0410: { cls: 'confusable-cyrillic-a-cap', title: 'Cyrillic capital a (U+0410), looks like Latin A' },
+    0x0412: { cls: 'confusable-cyrillic-ve-cap', title: 'Cyrillic capital ve (U+0412), looks like Latin B' },
+    0x0415: { cls: 'confusable-cyrillic-ie-cap', title: 'Cyrillic capital ie (U+0415), looks like Latin E' },
+    0x041A: { cls: 'confusable-cyrillic-ka-cap', title: 'Cyrillic capital ka (U+041A), looks like Latin K' },
+    0x041C: { cls: 'confusable-cyrillic-em-cap', title: 'Cyrillic capital em (U+041C), looks like Latin M' },
+    0x041D: { cls: 'confusable-cyrillic-en-cap', title: 'Cyrillic capital en (U+041D), looks like Latin H' },
+    0x041E: { cls: 'confusable-cyrillic-o-cap', title: 'Cyrillic capital o (U+041E), looks like Latin O' },
+    0x0420: { cls: 'confusable-cyrillic-er-cap', title: 'Cyrillic capital er (U+0420), looks like Latin P' },
+    0x0421: { cls: 'confusable-cyrillic-es-cap', title: 'Cyrillic capital es (U+0421), looks like Latin C' },
+    0x0422: { cls: 'confusable-cyrillic-te-cap', title: 'Cyrillic capital te (U+0422), looks like Latin T' },
+    0x0425: { cls: 'confusable-cyrillic-ha-cap', title: 'Cyrillic capital ha (U+0425), looks like Latin X' },
+    0x0430: { cls: 'confusable-cyrillic-a', title: 'Cyrillic small a (U+0430), looks like Latin a' },
+    0x0435: { cls: 'confusable-cyrillic-ie', title: 'Cyrillic small ie (U+0435), looks like Latin e' },
+    0x043E: { cls: 'confusable-cyrillic-o', title: 'Cyrillic small o (U+043E), looks like Latin o' },
+    0x0440: { cls: 'confusable-cyrillic-er', title: 'Cyrillic small er (U+0440), looks like Latin p' },
+    0x0441: { cls: 'confusable-cyrillic-es', title: 'Cyrillic small es (U+0441), looks like Latin c' },
+    0x0445: { cls: 'confusable-cyrillic-ha', title: 'Cyrillic small ha (U+0445), looks like Latin x' },
+    0x0456: { cls: 'confusable-cyrillic-i', title: 'Cyrillic small byelorussian-ukrainian i (U+0456), looks like Latin i' },
+    0x04CF: { cls: 'confusable-cyrillic-palochka', title: 'Cyrillic small palochka (U+04CF), looks like Latin l' }
+};
+
+const CONFUSABLE_BASE_CHARS = {
+    0x0391: 'A', 0x0392: 'B', 0x0395: 'E', 0x0396: 'Z',
+    0x0397: 'H', 0x0399: 'I', 0x039A: 'K', 0x039C: 'M',
+    0x039D: 'N', 0x039F: 'O', 0x03A1: 'P', 0x03A4: 'T',
+    0x03A7: 'X', 0x03BF: 'o', 0x03C1: 'p', 0x03C7: 'x',
+    0x0406: 'I', 0x0410: 'A', 0x0412: 'B', 0x0415: 'E',
+    0x041A: 'K', 0x041C: 'M', 0x041D: 'H', 0x041E: 'O',
+    0x0420: 'P', 0x0421: 'C', 0x0422: 'T', 0x0425: 'X',
+    0x0430: 'a', 0x0435: 'e', 0x043E: 'o', 0x0440: 'p',
+    0x0441: 'c', 0x0445: 'x', 0x0456: 'i', 0x04CF: 'l'
+};
+
 const REMOVE_ON_COPY_CODES = {
     0x00AD: true,
     0xFEFF: true
@@ -39,6 +90,19 @@ function isInvisibleCode(code) {
     return REMOVE_ON_COPY_CODES[code]
         || SPACE_ON_COPY_CODES[code]
         || (code >= 0x2000 && code <= 0x200A);
+}
+
+function isConfusableCode(code) {
+    return !!CONFUSABLE_RENDER_META[code];
+}
+
+function hasConfusableCharacters(text) {
+    for (const char of text) {
+        if (isConfusableCode(char.codePointAt(0))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function hasInvisibleCharacters(text) {
@@ -76,12 +140,16 @@ function renderInvisibleSpan(code, cls, title) {
     return `<span data-char="&#x${code.toString(16)};" class="invisible-char ${cls}" title="${title}"></span>`;
 }
 
+function renderConfusableSpan(char, code, cls, title) {
+    return `<span data-char="&#x${code.toString(16)};" class="confusable-char ${cls}" title="${escapeAttribute(title)}">${escapeHtml(char)}</span>`;
+}
+
 function renderWithInvisibles(text, isMismatch) {
     let result = '';
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const code = char.charCodeAt(0);
+    for (const char of text) {
+        const code = char.codePointAt(0);
         const meta = INVISIBLE_RENDER_META[code];
+        const confusableMeta = CONFUSABLE_RENDER_META[code];
 
         if (code === 0x0020 && isMismatch) {
             result += renderInvisibleSpan(code, 'invisible-regular-space', 'Space (U+0020)');
@@ -89,6 +157,8 @@ function renderWithInvisibles(text, isMismatch) {
             result += renderInvisibleSpan(code, meta.cls, meta.title);
         } else if (code >= 0x2000 && code <= 0x200A) {
             result += renderInvisibleSpan(code, 'invisible-space', `Unicode space (U+${code.toString(16).toUpperCase()})`);
+        } else if (confusableMeta) {
+            result += renderConfusableSpan(char, code, confusableMeta.cls, confusableMeta.title);
         } else {
             result += escapeHtml(char);
         }
@@ -100,16 +170,24 @@ function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function escapeAttribute(s) {
+    return escapeHtml(s).replace(/"/g, '&quot;');
+}
+
 const DIFF_LIMITS = {
     maxLines: 25000,
     maxChars: 2000000,
-    maxLineChars: 100000
+    maxLineChars: 100000,
+    maxLineEditDistance: 12000,
+    maxCharEditDistance: 12000,
+    maxMyersCells: 80000000
 };
 
 const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
 const SHORT_LINE_SIMILARITY_THRESHOLD = 0.5;
 const SHORT_LINE_MAX_UNITS = 32;
 const ALIGN_LOOKAHEAD = 4;
+const MYERS_TRACE_MAX_ITEMS = 512;
 let graphemeSegmenter = null;
 
 function validateDiffInput(left, right) {
@@ -148,6 +226,14 @@ function validateDiffInput(left, right) {
         }
     }
 
+    const lineEditLowerBound = estimateEditDistanceLowerBound(leftLines, rightLines);
+    if (lineEditLowerBound > DIFF_LIMITS.maxLineEditDistance) {
+        return {
+            ok: false,
+            message: 'These texts are too different to compare safely in your browser. Try smaller sections or more similar files.'
+        };
+    }
+
     return { ok: true, leftLines: leftLines, rightLines: rightLines, estimatedLines: estimatedLines };
 }
 
@@ -170,138 +256,415 @@ function buildUnitArray(units, matched) {
     return result;
 }
 
-function computeLCSLengthsRange(left, leftStart, leftEnd, right, rightStart, rightEnd, reverseLeft, reverseRight) {
-    const m = leftEnd - leftStart;
-    const n = rightEnd - rightStart;
-    let prev = new Uint32Array(n + 1);
-    let curr = new Uint32Array(n + 1);
-
-    for (let i = 1; i <= m; i++) {
-        curr[0] = 0;
-        const leftIndex = reverseLeft ? (leftEnd - i) : (leftStart + i - 1);
-        const leftValue = left[leftIndex];
-        for (let j = 1; j <= n; j++) {
-            const rightIndex = reverseRight ? (rightEnd - j) : (rightStart + j - 1);
-            if (leftValue === right[rightIndex]) {
-                curr[j] = prev[j - 1] + 1;
-            } else if (prev[j] > curr[j - 1]) {
-                curr[j] = prev[j];
-            } else {
-                curr[j] = curr[j - 1];
-            }
+function buildVisualSkeletonUnits(units) {
+    const result = [];
+    for (let i = 0; i < units.length; i++) {
+        if (units[i].length === 1) {
+            const code = units[i].codePointAt(0);
+            result.push(CONFUSABLE_BASE_CHARS[code] || units[i]);
+        } else {
+            result.push(units[i]);
         }
-        const tmp = prev;
-        prev = curr;
-        curr = tmp;
     }
-    return prev;
+    return result;
 }
 
-function collectLcsPairsHirschberg(left, right, leftStart, leftEnd, rightStart, rightEnd, pairs) {
-    const m = leftEnd - leftStart;
-    const n = rightEnd - rightStart;
-    if (m === 0 || n === 0) return;
+function estimateEditDistanceLowerBound(leftItems, rightItems) {
+    const counts = Object.create(null);
+    for (let i = 0; i < leftItems.length; i++) {
+        const key = '$' + leftItems[i];
+        counts[key] = (counts[key] || 0) + 1;
+    }
 
-    if (m === 1) {
-        const leftValue = left[leftStart];
-        for (let j = rightStart; j < rightEnd; j++) {
-            if (leftValue === right[j]) {
-                pairs.push([leftStart, j]);
-                return;
+    let sharedUpperBound = 0;
+    for (let j = 0; j < rightItems.length; j++) {
+        const key = '$' + rightItems[j];
+        if (counts[key] > 0) {
+            counts[key]--;
+            sharedUpperBound++;
+        }
+    }
+
+    return leftItems.length + rightItems.length - (2 * sharedUpperBound);
+}
+
+function mergeMyersRanges(ranges) {
+    if (!ranges.length) return ranges;
+
+    const merged = [];
+    for (let i = 0; i < ranges.length; i++) {
+        const current = ranges[i];
+        if (current.leftStart === current.leftEnd && current.rightStart === current.rightEnd) {
+            continue;
+        }
+
+        const previous = merged[merged.length - 1];
+        if (previous && previous.type === current.type
+            && previous.leftEnd === current.leftStart && previous.rightEnd === current.rightStart) {
+            previous.leftEnd = current.leftEnd;
+            previous.rightEnd = current.rightEnd;
+        } else {
+            merged.push({
+                type: current.type,
+                leftStart: current.leftStart,
+                leftEnd: current.leftEnd,
+                rightStart: current.rightStart,
+                rightEnd: current.rightEnd
+            });
+        }
+    }
+
+    return merged;
+}
+
+function atomicOpsToRanges(ops, leftOffset, rightOffset) {
+    const ranges = [];
+    let leftPos = leftOffset;
+    let rightPos = rightOffset;
+
+    for (let i = 0; i < ops.length; i++) {
+        const type = ops[i];
+        if (type === 'equal') {
+            ranges.push({
+                type: 'equal',
+                leftStart: leftPos,
+                leftEnd: leftPos + 1,
+                rightStart: rightPos,
+                rightEnd: rightPos + 1
+            });
+            leftPos++;
+            rightPos++;
+        } else if (type === 'delete') {
+            ranges.push({
+                type: 'delete',
+                leftStart: leftPos,
+                leftEnd: leftPos + 1,
+                rightStart: rightPos,
+                rightEnd: rightPos
+            });
+            leftPos++;
+        } else {
+            ranges.push({
+                type: 'insert',
+                leftStart: leftPos,
+                leftEnd: leftPos,
+                rightStart: rightPos,
+                rightEnd: rightPos + 1
+            });
+            rightPos++;
+        }
+    }
+
+    return mergeMyersRanges(ranges);
+}
+
+function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance) {
+    const n = leftEnd - leftStart;
+    const m = rightEnd - rightStart;
+    const max = Math.min(n + m, maxEditDistance);
+
+    const offset = max + 1;
+    let v = new Int32Array((2 * max) + 3);
+    v.fill(-1);
+    v[offset + 1] = 0;
+    const trace = [];
+
+    for (let d = 0; d <= max; d++) {
+        for (let k = -d; k <= d; k += 2) {
+            const kOffset = offset + k;
+            let x;
+            if (k === -d || (k !== d && v[kOffset - 1] < v[kOffset + 1])) {
+                x = v[kOffset + 1];
+            } else {
+                x = v[kOffset - 1] + 1;
+            }
+
+            let y = x - k;
+            while (x < n && y < m && left[leftStart + x] === right[rightStart + y]) {
+                x++;
+                y++;
+            }
+
+            v[kOffset] = x;
+            if (x >= n && y >= m) {
+                trace.push(v.slice());
+                return backtrackMyersTrace(trace, n, m, offset, leftStart, rightStart);
             }
         }
-        return;
+
+        trace.push(v.slice());
     }
 
-    const midOffset = Math.floor(m / 2);
-    const leftMid = leftStart + midOffset;
-    const leftLcs = computeLCSLengthsRange(left, leftStart, leftMid, right, rightStart, rightEnd, false, false);
-    const rightLcs = computeLCSLengthsRange(left, leftMid, leftEnd, right, rightStart, rightEnd, true, true);
+    throw new Error('These texts are too different to compare safely in your browser. Try smaller sections or more similar files.');
+}
 
-    let maxSum = -1;
-    let bestJOffset = 0;
-    for (let jOffset = 0; jOffset <= n; jOffset++) {
-        const sum = leftLcs[jOffset] + rightLcs[n - jOffset];
-        if (sum > maxSum) {
-            maxSum = sum;
-            bestJOffset = jOffset;
+function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset) {
+    let x = n;
+    let y = m;
+    const reversedOps = [];
+
+    for (let d = trace.length - 1; d > 0; d--) {
+        const vPrev = trace[d - 1];
+        const k = x - y;
+        let prevK;
+        if (k === -d || (k !== d && vPrev[offset + k - 1] < vPrev[offset + k + 1])) {
+            prevK = k + 1;
+        } else {
+            prevK = k - 1;
+        }
+
+        const prevX = vPrev[offset + prevK];
+        const prevY = prevX - prevK;
+
+        while (x > prevX && y > prevY) {
+            reversedOps.push('equal');
+            x--;
+            y--;
+        }
+
+        if (x === prevX) {
+            reversedOps.push('insert');
+            y--;
+        } else {
+            reversedOps.push('delete');
+            x--;
         }
     }
 
-    const rightMid = rightStart + bestJOffset;
-    collectLcsPairsHirschberg(left, right, leftStart, leftMid, rightStart, rightMid, pairs);
-    collectLcsPairsHirschberg(left, right, leftMid, leftEnd, rightMid, rightEnd, pairs);
+    while (x > 0 && y > 0) {
+        reversedOps.push('equal');
+        x--;
+        y--;
+    }
+
+    return atomicOpsToRanges(reversedOps.reverse(), leftOffset, rightOffset);
+}
+
+function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance) {
+    const n = leftEnd - leftStart;
+    const m = rightEnd - rightStart;
+    const max = Math.ceil((n + m) / 2);
+    const vOffset = max + 1;
+    const vLength = (2 * max) + 3;
+    const vForward = new Int32Array(vLength);
+    const vReverse = new Int32Array(vLength);
+    vForward.fill(-1);
+    vReverse.fill(-1);
+    vForward[vOffset + 1] = 0;
+    vReverse[vOffset + 1] = 0;
+
+    const delta = n - m;
+    const oddDelta = (delta % 2) !== 0;
+    let steps = 0;
+
+    for (let d = 0; d <= max; d++) {
+        if (d * 2 > maxEditDistance) {
+            throw new Error('These texts are too different to compare safely in your browser. Try smaller sections or more similar files.');
+        }
+
+        for (let k = -d; k <= d; k += 2) {
+            steps++;
+            if (steps > DIFF_LIMITS.maxMyersCells) {
+                throw new Error('Comparison is too complex for a safe browser-side diff. Try smaller sections.');
+            }
+
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || (k !== d && vForward[kOffset - 1] < vForward[kOffset + 1])) {
+                x = vForward[kOffset + 1];
+            } else {
+                x = vForward[kOffset - 1] + 1;
+            }
+
+            let y = x - k;
+            while (x < n && y < m && left[leftStart + x] === right[rightStart + y]) {
+                x++;
+                y++;
+            }
+
+            vForward[kOffset] = x;
+
+            if (oddDelta) {
+                const reverseK = delta - k;
+                const reverseOffset = vOffset + reverseK;
+                if (reverseOffset >= 0 && reverseOffset < vLength && vReverse[reverseOffset] !== -1
+                    && x + vReverse[reverseOffset] >= n) {
+                    return { leftMid: leftStart + x, rightMid: rightStart + y };
+                }
+            }
+        }
+
+        for (let k = -d; k <= d; k += 2) {
+            steps++;
+            if (steps > DIFF_LIMITS.maxMyersCells) {
+                throw new Error('Comparison is too complex for a safe browser-side diff. Try smaller sections.');
+            }
+
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || (k !== d && vReverse[kOffset - 1] < vReverse[kOffset + 1])) {
+                x = vReverse[kOffset + 1];
+            } else {
+                x = vReverse[kOffset - 1] + 1;
+            }
+
+            let y = x - k;
+            while (x < n && y < m && left[leftEnd - x - 1] === right[rightEnd - y - 1]) {
+                x++;
+                y++;
+            }
+
+            vReverse[kOffset] = x;
+
+            if (!oddDelta) {
+                const forwardK = delta - k;
+                const forwardOffset = vOffset + forwardK;
+                if (forwardOffset >= 0 && forwardOffset < vLength && vForward[forwardOffset] !== -1
+                    && vForward[forwardOffset] + x >= n) {
+                    return { leftMid: leftEnd - x, rightMid: rightEnd - y };
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+function computeMyersRanges(left, right, options) {
+    const maxEditDistance = options && options.maxEditDistance ? options.maxEditDistance : DIFF_LIMITS.maxLineEditDistance;
+    const stack = [{ leftStart: 0, leftEnd: left.length, rightStart: 0, rightEnd: right.length }];
+    const output = [];
+
+    while (stack.length) {
+        const frame = stack.pop();
+        let leftStart = frame.leftStart;
+        let leftEnd = frame.leftEnd;
+        let rightStart = frame.rightStart;
+        let rightEnd = frame.rightEnd;
+
+        let prefix = 0;
+        while (leftStart + prefix < leftEnd && rightStart + prefix < rightEnd
+            && left[leftStart + prefix] === right[rightStart + prefix]) {
+            prefix++;
+        }
+
+        if (prefix) {
+            output.push({
+                type: 'equal',
+                leftStart: leftStart,
+                leftEnd: leftStart + prefix,
+                rightStart: rightStart,
+                rightEnd: rightStart + prefix
+            });
+            leftStart += prefix;
+            rightStart += prefix;
+        }
+
+        let suffix = 0;
+        while (leftStart + suffix < leftEnd && rightStart + suffix < rightEnd
+            && left[leftEnd - suffix - 1] === right[rightEnd - suffix - 1]) {
+            suffix++;
+        }
+
+        const suffixRange = suffix ? {
+            type: 'equal',
+            leftStart: leftEnd - suffix,
+            leftEnd: leftEnd,
+            rightStart: rightEnd - suffix,
+            rightEnd: rightEnd
+        } : null;
+
+        leftEnd -= suffix;
+        rightEnd -= suffix;
+
+        if (leftStart === leftEnd && rightStart === rightEnd) {
+            if (suffixRange) output.push(suffixRange);
+            continue;
+        }
+
+        if (leftStart === leftEnd) {
+            output.push({
+                type: 'insert',
+                leftStart: leftStart,
+                leftEnd: leftStart,
+                rightStart: rightStart,
+                rightEnd: rightEnd
+            });
+            if (suffixRange) output.push(suffixRange);
+            continue;
+        }
+
+        if (rightStart === rightEnd) {
+            output.push({
+                type: 'delete',
+                leftStart: leftStart,
+                leftEnd: leftEnd,
+                rightStart: rightStart,
+                rightEnd: rightStart
+            });
+            if (suffixRange) output.push(suffixRange);
+            continue;
+        }
+
+        const leftLength = leftEnd - leftStart;
+        const rightLength = rightEnd - rightStart;
+        const lowerBound = estimateEditDistanceLowerBound(
+            left.slice(leftStart, leftEnd),
+            right.slice(rightStart, rightEnd)
+        );
+        if (lowerBound > maxEditDistance) {
+            throw new Error('These texts are too different to compare safely in your browser. Try smaller sections or more similar files.');
+        }
+
+        if (leftLength + rightLength <= MYERS_TRACE_MAX_ITEMS) {
+            output.push.apply(output, buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance));
+            if (suffixRange) output.push(suffixRange);
+            continue;
+        }
+
+        const split = findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance);
+        if (!split
+            || (split.leftMid === leftStart && split.rightMid === rightStart)
+            || (split.leftMid === leftEnd && split.rightMid === rightEnd)) {
+            if (leftLength + rightLength <= MYERS_TRACE_MAX_ITEMS) {
+                output.push.apply(output, buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance));
+                if (suffixRange) output.push(suffixRange);
+                continue;
+            }
+            throw new Error('Comparison is too complex for a safe browser-side diff. Try smaller sections.');
+        }
+
+        if (suffixRange) {
+            stack.push({
+                leftStart: suffixRange.leftStart,
+                leftEnd: suffixRange.leftEnd,
+                rightStart: suffixRange.rightStart,
+                rightEnd: suffixRange.rightEnd
+            });
+        }
+        stack.push({ leftStart: split.leftMid, leftEnd: leftEnd, rightStart: split.rightMid, rightEnd: rightEnd });
+        stack.push({ leftStart: leftStart, leftEnd: split.leftMid, rightStart: rightStart, rightEnd: split.rightMid });
+    }
+
+    return mergeMyersRanges(output);
 }
 
 function computeCharDiff(left, right) {
     const leftUnits = splitDiffUnits(left);
     const rightUnits = splitDiffUnits(right);
-    const m = leftUnits.length, n = rightUnits.length;
-
-    let prefix = 0;
-    while (prefix < m && prefix < n && leftUnits[prefix] === rightUnits[prefix]) prefix++;
-
-    let suffix = 0;
-    while (suffix < m - prefix && suffix < n - prefix
-        && leftUnits[m - 1 - suffix] === rightUnits[n - 1 - suffix]) suffix++;
-
     const leftMatched = new Set();
     const rightMatched = new Set();
-    for (let k = 0; k < prefix; k++) {
-        leftMatched.add(k);
-        rightMatched.add(k);
-    }
-    for (let k = m - suffix; k < m; k++) leftMatched.add(k);
-    for (let k = n - suffix; k < n; k++) rightMatched.add(k);
 
-    const ml = m - prefix - suffix;
-    const nl = n - prefix - suffix;
-    if (ml === 0 || nl === 0) {
-        return {
-            left: leftMatched,
-            right: rightMatched,
-            leftUnits: leftUnits,
-            rightUnits: rightUnits
-        };
-    }
-
-    const leftCore = leftUnits.slice(prefix, m - suffix);
-    const rightCore = rightUnits.slice(prefix, n - suffix);
-
-    if (ml * nl > 1000000) {
-        const charPairs = [];
-        collectLcsPairsHirschberg(leftCore, rightCore, 0, leftCore.length, 0, rightCore.length, charPairs);
-        for (const pair of charPairs) {
-            leftMatched.add(prefix + pair[0]);
-            rightMatched.add(prefix + pair[1]);
-        }
-    } else {
-        const dp = [];
-        for (let i = 0; i <= ml; i++) dp[i] = new Uint32Array(nl + 1);
-
-        for (let i = 1; i <= ml; i++) {
-            for (let j = 1; j <= nl; j++) {
-                if (leftCore[i - 1] === rightCore[j - 1]) {
-                    dp[i][j] = dp[i - 1][j - 1] + 1;
-                } else if (dp[i - 1][j] > dp[i][j - 1]) {
-                    dp[i][j] = dp[i - 1][j];
-                } else {
-                    dp[i][j] = dp[i][j - 1];
-                }
-            }
-        }
-
-        let i = ml, j = nl;
-        while (i > 0 && j > 0) {
-            if (leftCore[i - 1] === rightCore[j - 1]) {
-                leftMatched.add(prefix + i - 1);
-                rightMatched.add(prefix + j - 1);
-                i--; j--;
-            } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-                i--;
-            } else {
-                j--;
-            }
+    const ranges = computeMyersRanges(leftUnits, rightUnits, {
+        maxEditDistance: DIFF_LIMITS.maxCharEditDistance
+    });
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        if (range.type !== 'equal') continue;
+        const length = range.leftEnd - range.leftStart;
+        for (let j = 0; j < length; j++) {
+            leftMatched.add(range.leftStart + j);
+            rightMatched.add(range.rightStart + j);
         }
     }
 
@@ -311,10 +674,6 @@ function computeCharDiff(left, right) {
         leftUnits: leftUnits,
         rightUnits: rightUnits
     };
-}
-
-function collectLineLcsPairs(leftLines, rightLines, pairs) {
-    collectLcsPairsHirschberg(leftLines, rightLines, 0, leftLines.length, 0, rightLines.length, pairs);
 }
 
 function getBigrams(text) {
@@ -359,7 +718,13 @@ function shortLineSimilarity(leftLine, rightLine) {
     const rightUnits = splitDiffUnits(rightLine);
     const maxUnits = Math.max(leftUnits.length, rightUnits.length);
     if (maxUnits > SHORT_LINE_MAX_UNITS) return 0;
-    return boundedEditDistanceSimilarity(leftUnits, rightUnits);
+
+    const directSimilarity = boundedEditDistanceSimilarity(leftUnits, rightUnits);
+    const visualSimilarity = boundedEditDistanceSimilarity(
+        buildVisualSkeletonUnits(leftUnits),
+        buildVisualSkeletonUnits(rightUnits)
+    );
+    return Math.max(directSimilarity, visualSimilarity);
 }
 
 function modifiedLineScore(leftLine, rightLine) {
@@ -533,6 +898,54 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
     }
 }
 
+function appendMyersRanges(leftLines, rightLines, ranges, diff) {
+    let pendingLeftStart = null;
+    let pendingLeftEnd = null;
+    let pendingRightStart = null;
+    let pendingRightEnd = null;
+
+    function ensurePending(leftIndex, rightIndex) {
+        if (pendingLeftStart === null) {
+            pendingLeftStart = leftIndex;
+            pendingLeftEnd = leftIndex;
+            pendingRightStart = rightIndex;
+            pendingRightEnd = rightIndex;
+        }
+    }
+
+    function flushPending() {
+        if (pendingLeftStart === null) return;
+        appendAlignedRange(leftLines, rightLines, pendingLeftStart, pendingLeftEnd, pendingRightStart, pendingRightEnd, diff);
+        pendingLeftStart = null;
+        pendingLeftEnd = null;
+        pendingRightStart = null;
+        pendingRightEnd = null;
+    }
+
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        if (range.type === 'equal') {
+            flushPending();
+            const length = range.leftEnd - range.leftStart;
+            for (let j = 0; j < length; j++) {
+                diff.push({
+                    type: 'match',
+                    leftLineIndex: range.leftStart + j,
+                    rightLineIndex: range.rightStart + j
+                });
+            }
+        } else if (range.type === 'delete') {
+            ensurePending(range.leftStart, range.rightStart);
+            pendingLeftEnd = range.leftEnd;
+        } else if (range.type === 'insert') {
+            ensurePending(range.leftStart, range.rightStart);
+            pendingRightEnd = range.rightEnd;
+        }
+    }
+
+    flushPending();
+}
+
 function computeLineDiff(left, right) {
     const validated = validateDiffInput(left, right);
     if (!validated.ok) {
@@ -542,24 +955,10 @@ function computeLineDiff(left, right) {
     const leftLines = validated.leftLines;
     const rightLines = validated.rightLines;
     const diff = [];
-    const pairs = [];
-
-    collectLineLcsPairs(leftLines, rightLines, pairs);
-
-    let leftPos = 0;
-    let rightPos = 0;
-    for (const pair of pairs) {
-        const leftMatch = pair[0];
-        const rightMatch = pair[1];
-
-        appendAlignedRange(leftLines, rightLines, leftPos, leftMatch, rightPos, rightMatch, diff);
-        diff.push({ type: 'match', leftLineIndex: leftMatch, rightLineIndex: rightMatch });
-
-        leftPos = leftMatch + 1;
-        rightPos = rightMatch + 1;
-    }
-
-    appendAlignedRange(leftLines, rightLines, leftPos, leftLines.length, rightPos, rightLines.length, diff);
+    const ranges = computeMyersRanges(leftLines, rightLines, {
+        maxEditDistance: DIFF_LIMITS.maxLineEditDistance
+    });
+    appendMyersRanges(leftLines, rightLines, ranges, diff);
 
     return { leftLines: leftLines, rightLines: rightLines, diff: diff };
 }
