@@ -369,6 +369,25 @@ body.resizing .diff-gutter {
     line-height: 1;
 }
 
+.confusable-char {
+    position: relative;
+    display: inline-block;
+    border-bottom: 2px dotted #d97706;
+    background-color: rgba(217, 119, 6, 0.14);
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+.confusable-char::after {
+    content: "!";
+    display: inline-block;
+    margin-left: 1px;
+    font-size: 0.72em;
+    line-height: 1;
+    color: #b45309;
+    vertical-align: super;
+}
+
 .invisible-zwsp::before {
     content: "|";
 }
@@ -471,6 +490,15 @@ body.resizing .diff-gutter {
 
 [data-theme="dark"] .invisible-regular-space {
     background-color: rgba(248, 113, 113, 0.5);
+}
+
+[data-theme="dark"] .confusable-char {
+    border-bottom-color: #fbbf24;
+    background-color: rgba(251, 191, 36, 0.18);
+}
+
+[data-theme="dark"] .confusable-char::after {
+    color: #fbbf24;
 }
 
 .seo-content {
