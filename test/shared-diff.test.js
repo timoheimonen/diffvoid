@@ -80,6 +80,32 @@ function lcsEditDistance(left, right) {
     return left.length + right.length - (2 * dp[left.length][right.length]);
 }
 
+function reconstructedFromRanges(ranges, leftItems, rightItems) {
+    const left = [];
+    const right = [];
+
+    for (const range of ranges) {
+        if (range.type === 'equal') {
+            left.push.apply(left, leftItems.slice(range.leftStart, range.leftEnd));
+            right.push.apply(right, rightItems.slice(range.rightStart, range.rightEnd));
+        } else if (range.type === 'delete') {
+            left.push.apply(left, leftItems.slice(range.leftStart, range.leftEnd));
+        } else if (range.type === 'insert') {
+            right.push.apply(right, rightItems.slice(range.rightStart, range.rightEnd));
+        }
+    }
+
+    return { left: left, right: right };
+}
+
+function createRandom(seed) {
+    let value = seed >>> 0;
+    return function () {
+        value = ((value * 1664525) + 1013904223) >>> 0;
+        return value / 0x100000000;
+    };
+}
+
 test('line diff handles equal, added, missing, and modified rows', function () {
     assert.deepEqual(types('a\nb\nc', 'a\nb\nc'), ['match', 'match', 'match']);
     assert.deepEqual(types('a\nc', 'a\nb\nc'), ['match', 'added', 'match']);
@@ -98,6 +124,61 @@ test('Myers ranges produce shortest edit scripts for small inputs', function () 
 
     for (const [left, right] of cases) {
         const ranges = diff.computeMyersRanges(left, right, { maxEditDistance: 100 });
+        assert.equal(editDistanceFromRanges(ranges), lcsEditDistance(left, right));
+    }
+});
+
+test('Myers ranges preserve and minimize deterministic random small inputs', function () {
+    const random = createRandom(123456789);
+    const alphabet = ['a', 'b', 'c', 'd', 'e', 'aa', 'bb', ''];
+
+    for (let caseIndex = 0; caseIndex < 1000; caseIndex++) {
+        const leftLength = Math.floor(random() * 12);
+        const rightLength = Math.floor(random() * 12);
+        const left = Array.from({ length: leftLength }, function () {
+            return alphabet[Math.floor(random() * alphabet.length)];
+        });
+        const right = Array.from({ length: rightLength }, function () {
+            return alphabet[Math.floor(random() * alphabet.length)];
+        });
+
+        const ranges = diff.computeMyersRanges(left, right, { maxEditDistance: 100 });
+        const rebuilt = reconstructedFromRanges(ranges, left, right);
+
+        assert.deepEqual(rebuilt, { left: left, right: right });
+        assert.equal(editDistanceFromRanges(ranges), lcsEditDistance(left, right));
+    }
+});
+
+test('Myers split path preserves and minimizes larger edited inputs', function () {
+    const random = createRandom(987654321);
+
+    for (let caseIndex = 0; caseIndex < 40; caseIndex++) {
+        const left = [];
+        const right = [];
+        for (let i = 0; i < 300; i++) {
+            const value = 'line ' + i;
+            left.push(value);
+            right.push(value);
+        }
+
+        for (let i = 0; i < 20; i++) {
+            left.splice(Math.floor(random() * left.length), 1, 'left edit ' + caseIndex + ':' + i);
+            right.splice(Math.floor(random() * right.length), 1, 'right edit ' + caseIndex + ':' + i);
+        }
+
+        for (let i = 0; i < 12; i++) {
+            right.splice(Math.floor(random() * (right.length + 1)), 0, 'inserted ' + caseIndex + ':' + i);
+        }
+
+        for (let i = 0; i < 12; i++) {
+            left.splice(Math.floor(random() * left.length), 1);
+        }
+
+        const ranges = diff.computeMyersRanges(left, right, { maxEditDistance: 1000 });
+        const rebuilt = reconstructedFromRanges(ranges, left, right);
+
+        assert.deepEqual(rebuilt, { left: left, right: right });
         assert.equal(editDistanceFromRanges(ranges), lcsEditDistance(left, right));
     }
 });
