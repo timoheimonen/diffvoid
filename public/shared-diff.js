@@ -183,12 +183,61 @@ const DIFF_LIMITS = {
     maxMyersCells: 80000000
 };
 
+const DIFF_WORK_BUDGET_DEFAULTS = {
+    remainingMyersSteps: 40000000,
+    remainingAlignmentCells: 2000000,
+    remainingCharEditDistance: 50000,
+    remainingRangePairs: 200000
+};
+
+const DIFF_MODEL_LIMITS = {
+    maxRangePairsPerRow: 4096,
+    maxRangePairsTotal: 200000
+};
+
 const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
 const SHORT_LINE_SIMILARITY_THRESHOLD = 0.5;
 const SHORT_LINE_MAX_UNITS = 32;
 const ALIGN_LOOKAHEAD = 4;
 const MYERS_TRACE_MAX_ITEMS = 512;
 let graphemeSegmenter = null;
+
+function finiteBudgetValue(overrides, key, fallback) {
+    if (!overrides || !Object.prototype.hasOwnProperty.call(overrides, key)) {
+        return fallback;
+    }
+
+    const value = overrides[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+    return Math.max(0, Math.floor(value));
+}
+
+function createDiffWorkBudget(overrides) {
+    return {
+        remainingMyersSteps: finiteBudgetValue(
+            overrides,
+            'remainingMyersSteps',
+            DIFF_WORK_BUDGET_DEFAULTS.remainingMyersSteps
+        ),
+        remainingAlignmentCells: finiteBudgetValue(
+            overrides,
+            'remainingAlignmentCells',
+            DIFF_WORK_BUDGET_DEFAULTS.remainingAlignmentCells
+        ),
+        remainingCharEditDistance: finiteBudgetValue(
+            overrides,
+            'remainingCharEditDistance',
+            DIFF_WORK_BUDGET_DEFAULTS.remainingCharEditDistance
+        ),
+        remainingRangePairs: finiteBudgetValue(
+            overrides,
+            'remainingRangePairs',
+            DIFF_WORK_BUDGET_DEFAULTS.remainingRangePairs
+        )
+    };
+}
 
 function validateDiffInput(left, right) {
     if (left.length > DIFF_LIMITS.maxChars || right.length > DIFF_LIMITS.maxChars) {
@@ -238,14 +287,33 @@ function validateDiffInput(left, right) {
 }
 
 function splitDiffUnits(text) {
+    const units = [];
+    const boundaries = [];
+
     if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
         if (!graphemeSegmenter) {
             graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
         }
-        return Array.from(graphemeSegmenter.segment(text), function (item) { return item.segment; });
+
+        const segments = graphemeSegmenter.segment(text);
+        for (const item of segments) {
+            boundaries.push(item.index);
+            units.push(item.segment);
+        }
+    } else {
+        let offset = 0;
+        for (const unit of Array.from(text)) {
+            boundaries.push(offset);
+            units.push(unit);
+            offset += unit.length;
+        }
     }
 
-    return Array.from(text);
+    boundaries.push(text.length);
+    return {
+        units: units,
+        boundaries: Uint32Array.from(boundaries)
+    };
 }
 
 function buildUnitArray(units, matched) {
@@ -531,7 +599,9 @@ function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, m
 }
 
 function computeMyersRanges(left, right, options) {
-    const maxEditDistance = options && options.maxEditDistance ? options.maxEditDistance : DIFF_LIMITS.maxLineEditDistance;
+    const maxEditDistance = options && typeof options.maxEditDistance === 'number'
+        ? options.maxEditDistance
+        : DIFF_LIMITS.maxLineEditDistance;
     const stack = [{ leftStart: 0, leftEnd: left.length, rightStart: 0, rightEnd: right.length }];
     const output = [];
 
@@ -650,8 +720,10 @@ function computeMyersRanges(left, right, options) {
 }
 
 function computeCharDiff(left, right) {
-    const leftUnits = splitDiffUnits(left);
-    const rightUnits = splitDiffUnits(right);
+    const leftSplit = splitDiffUnits(left);
+    const rightSplit = splitDiffUnits(right);
+    const leftUnits = leftSplit.units;
+    const rightUnits = rightSplit.units;
     const leftMatched = new Set();
     const rightMatched = new Set();
 
@@ -673,6 +745,85 @@ function computeCharDiff(left, right) {
         right: rightMatched,
         leftUnits: leftUnits,
         rightUnits: rightUnits
+    };
+}
+
+function appendMergedChangeRange(bounds, start, end) {
+    if (start === end) return;
+
+    const length = bounds.length;
+    if (length >= 2 && start <= bounds[length - 1]) {
+        if (end > bounds[length - 1]) {
+            bounds[length - 1] = end;
+        }
+        return;
+    }
+
+    bounds.push(start, end);
+}
+
+function intralineWholeLineResult() {
+    return {
+        detailMode: 'whole-line',
+        leftBounds: [],
+        rightBounds: [],
+        editDistance: 0
+    };
+}
+
+function computeIntralineChangeRanges(left, right, workBudget) {
+    const budget = normalizeDiffWorkBudget(workBudget);
+    const leftSplit = splitDiffUnits(left);
+    const rightSplit = splitDiffUnits(right);
+    const maxEditDistance = Math.min(
+        DIFF_LIMITS.maxCharEditDistance,
+        budget.remainingCharEditDistance
+    );
+
+    if (left !== right && maxEditDistance <= 0) {
+        return intralineWholeLineResult();
+    }
+
+    let ranges;
+    try {
+        ranges = computeMyersRanges(leftSplit.units, rightSplit.units, {
+            maxEditDistance: maxEditDistance
+        });
+    } catch (err) {
+        budget.remainingCharEditDistance = 0;
+        return intralineWholeLineResult();
+    }
+
+    const leftBounds = [];
+    const rightBounds = [];
+    let editDistance = 0;
+
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        if (range.type === 'delete') {
+            const leftStart = leftSplit.boundaries[range.leftStart];
+            const leftEnd = leftSplit.boundaries[range.leftEnd];
+            appendMergedChangeRange(leftBounds, leftStart, leftEnd);
+            editDistance += range.leftEnd - range.leftStart;
+        } else if (range.type === 'insert') {
+            const rightStart = rightSplit.boundaries[range.rightStart];
+            const rightEnd = rightSplit.boundaries[range.rightEnd];
+            appendMergedChangeRange(rightBounds, rightStart, rightEnd);
+            editDistance += range.rightEnd - range.rightStart;
+        }
+    }
+
+    if (editDistance > budget.remainingCharEditDistance) {
+        budget.remainingCharEditDistance = 0;
+        return intralineWholeLineResult();
+    }
+
+    budget.remainingCharEditDistance -= editDistance;
+    return {
+        detailMode: 'precise',
+        leftBounds: leftBounds,
+        rightBounds: rightBounds,
+        editDistance: editDistance
     };
 }
 
@@ -714,8 +865,8 @@ function boundedEditDistanceSimilarity(leftUnits, rightUnits) {
 }
 
 function shortLineSimilarity(leftLine, rightLine) {
-    const leftUnits = splitDiffUnits(leftLine);
-    const rightUnits = splitDiffUnits(rightLine);
+    const leftUnits = splitDiffUnits(leftLine).units;
+    const rightUnits = splitDiffUnits(rightLine).units;
     const maxUnits = Math.max(leftUnits.length, rightUnits.length);
     if (maxUnits > SHORT_LINE_MAX_UNITS) return 0;
 
@@ -736,8 +887,8 @@ function modifiedLineScore(leftLine, rightLine) {
 function isModifiedLineCandidate(leftLine, rightLine, score) {
     if (score >= MODIFIED_SIMILARITY_THRESHOLD) return true;
 
-    const leftUnits = splitDiffUnits(leftLine);
-    const rightUnits = splitDiffUnits(rightLine);
+    const leftUnits = splitDiffUnits(leftLine).units;
+    const rightUnits = splitDiffUnits(rightLine).units;
     const maxUnits = Math.max(leftUnits.length, rightUnits.length);
     if (maxUnits > SHORT_LINE_MAX_UNITS) return false;
 
@@ -784,20 +935,55 @@ function lineSimilarity(leftLine, rightLine) {
     return weighted * (0.6 + 0.4 * lengthRatio);
 }
 
-function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, diff) {
+function createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex) {
+    if (type === 'match') {
+        return {
+            type: 'match',
+            leftLineIndex: leftLineIndex,
+            rightLineIndex: rightLineIndex
+        };
+    }
+
+    if (type === 'modified') {
+        const charMatched = computeCharDiff(leftLines[leftLineIndex], rightLines[rightLineIndex]);
+        return {
+            type: 'modified',
+            leftLineIndex: leftLineIndex,
+            rightLineIndex: rightLineIndex,
+            leftChars: buildUnitArray(charMatched.leftUnits, charMatched.left),
+            chars: buildUnitArray(charMatched.rightUnits, charMatched.right)
+        };
+    }
+
+    if (type === 'missing') {
+        return { type: 'missing', lineIndex: leftLineIndex };
+    }
+
+    return { type: 'added', lineIndex: rightLineIndex };
+}
+
+function appendDiffRow(diff, leftLines, rightLines, type, leftLineIndex, rightLineIndex, createRow) {
+    if (createRow) {
+        diff.push(createRow(type, leftLineIndex, rightLineIndex));
+        return;
+    }
+    diff.push(createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex));
+}
+
+function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, diff, createRow) {
     const leftCount = leftEnd - leftStart;
     const rightCount = rightEnd - rightStart;
 
     if (leftCount === 0) {
         for (let ri = rightStart; ri < rightEnd; ri++) {
-            diff.push({ type: 'added', lineIndex: ri });
+            appendDiffRow(diff, leftLines, rightLines, 'added', null, ri, createRow);
         }
         return;
     }
 
     if (rightCount === 0) {
         for (let li = leftStart; li < leftEnd; li++) {
-            diff.push({ type: 'missing', lineIndex: li });
+            appendDiffRow(diff, leftLines, rightLines, 'missing', li, null, createRow);
         }
         return;
     }
@@ -828,14 +1014,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         }
 
         if (isModifiedLineCandidate(leftLines[i], rightLines[j], s00) && s00 >= bestRightScore && s00 >= bestLeftScore) {
-            const charMatched = computeCharDiff(leftLines[i], rightLines[j]);
-            diff.push({
-                type: 'modified',
-                leftLineIndex: i,
-                rightLineIndex: j,
-                leftChars: buildUnitArray(charMatched.leftUnits, charMatched.left),
-                chars: buildUnitArray(charMatched.rightUnits, charMatched.right)
-            });
+            appendDiffRow(diff, leftLines, rightLines, 'modified', i, j, createRow);
             i++;
             j++;
             continue;
@@ -843,7 +1022,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
 
         if (isModifiedLineCandidate(leftLines[i], rightLines[j + bestRightSkip], bestRightScore) && bestRightScore >= bestLeftScore) {
             for (let add = 0; add < bestRightSkip; add++) {
-                diff.push({ type: 'added', lineIndex: j });
+                appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
                 j++;
             }
             continue;
@@ -851,7 +1030,7 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
 
         if (isModifiedLineCandidate(leftLines[i + bestLeftSkip], rightLines[j], bestLeftScore)) {
             for (let miss = 0; miss < bestLeftSkip; miss++) {
-                diff.push({ type: 'missing', lineIndex: i });
+                appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
                 i++;
             }
             continue;
@@ -860,45 +1039,38 @@ function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStar
         const leftRemaining = leftEnd - i;
         const rightRemaining = rightEnd - j;
         if (rightRemaining > leftRemaining) {
-            diff.push({ type: 'added', lineIndex: j });
+            appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
             j++;
         } else if (leftRemaining > rightRemaining) {
-            diff.push({ type: 'missing', lineIndex: i });
+            appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
             i++;
         } else {
             const fallbackSim = modifiedLineScore(leftLines[i], rightLines[j]);
             if (isModifiedLineCandidate(leftLines[i], rightLines[j], fallbackSim)) {
-                const charMatchedFallback = computeCharDiff(leftLines[i], rightLines[j]);
-                diff.push({
-                    type: 'modified',
-                    leftLineIndex: i,
-                    rightLineIndex: j,
-                    leftChars: buildUnitArray(charMatchedFallback.leftUnits, charMatchedFallback.left),
-                    chars: buildUnitArray(charMatchedFallback.rightUnits, charMatchedFallback.right)
-                });
+                appendDiffRow(diff, leftLines, rightLines, 'modified', i, j, createRow);
                 i++;
                 j++;
             } else {
-                diff.push({ type: 'missing', lineIndex: i });
+                appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
                 i++;
-                diff.push({ type: 'added', lineIndex: j });
+                appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
                 j++;
             }
         }
     }
 
     while (i < leftEnd) {
-        diff.push({ type: 'missing', lineIndex: i });
+        appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
         i++;
     }
 
     while (j < rightEnd) {
-        diff.push({ type: 'added', lineIndex: j });
+        appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
         j++;
     }
 }
 
-function appendMyersRanges(leftLines, rightLines, ranges, diff) {
+function appendMyersRanges(leftLines, rightLines, ranges, diff, createRow) {
     let pendingLeftStart = null;
     let pendingLeftEnd = null;
     let pendingRightStart = null;
@@ -915,7 +1087,16 @@ function appendMyersRanges(leftLines, rightLines, ranges, diff) {
 
     function flushPending() {
         if (pendingLeftStart === null) return;
-        appendAlignedRange(leftLines, rightLines, pendingLeftStart, pendingLeftEnd, pendingRightStart, pendingRightEnd, diff);
+        appendAlignedRange(
+            leftLines,
+            rightLines,
+            pendingLeftStart,
+            pendingLeftEnd,
+            pendingRightStart,
+            pendingRightEnd,
+            diff,
+            createRow
+        );
         pendingLeftStart = null;
         pendingLeftEnd = null;
         pendingRightStart = null;
@@ -928,11 +1109,15 @@ function appendMyersRanges(leftLines, rightLines, ranges, diff) {
             flushPending();
             const length = range.leftEnd - range.leftStart;
             for (let j = 0; j < length; j++) {
-                diff.push({
-                    type: 'match',
-                    leftLineIndex: range.leftStart + j,
-                    rightLineIndex: range.rightStart + j
-                });
+                appendDiffRow(
+                    diff,
+                    leftLines,
+                    rightLines,
+                    'match',
+                    range.leftStart + j,
+                    range.rightStart + j,
+                    createRow
+                );
             }
         } else if (range.type === 'delete') {
             ensurePending(range.leftStart, range.rightStart);
@@ -944,6 +1129,186 @@ function appendMyersRanges(leftLines, rightLines, ranges, diff) {
     }
 
     flushPending();
+}
+
+function buildLineStarts(text) {
+    const starts = [0];
+    for (let i = 0; i < text.length; i++) {
+        if (text.charCodeAt(i) === 0x000A) {
+            starts.push(i + 1);
+        }
+    }
+    return Uint32Array.from(starts);
+}
+
+function resolvedModelLimit(options, key, fallback) {
+    const limits = options && options.modelLimits;
+    if (!limits || !Object.prototype.hasOwnProperty.call(limits, key)) {
+        return fallback;
+    }
+
+    const value = limits[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+    return Math.min(fallback, Math.max(0, Math.floor(value)));
+}
+
+function normalizeDiffWorkBudget(workBudget) {
+    if (!workBudget) return createDiffWorkBudget();
+
+    const defaults = createDiffWorkBudget();
+    const keys = Object.keys(defaults);
+    for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const value = workBudget[key];
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            workBudget[key] = defaults[key];
+        } else {
+            workBudget[key] = Math.max(0, Math.floor(value));
+        }
+    }
+    return workBudget;
+}
+
+function appendBoundsToPool(pool, bounds) {
+    for (let i = 0; i < bounds.length; i++) {
+        pool.push(bounds[i]);
+    }
+}
+
+function createCompactRowFactory(leftLines, rightLines, workBudget, rangePool, stats, modelLimits) {
+    return function (type, leftLineIndex, rightLineIndex) {
+        if (type === 'match') {
+            stats.matchedRows++;
+            return {
+                type: 'match',
+                leftLineIndex: leftLineIndex,
+                rightLineIndex: rightLineIndex
+            };
+        }
+
+        if (type === 'missing') {
+            stats.missingRows++;
+            return { type: 'missing', leftLineIndex: leftLineIndex };
+        }
+
+        if (type === 'added') {
+            stats.addedRows++;
+            return { type: 'added', rightLineIndex: rightLineIndex };
+        }
+
+        stats.modifiedRows++;
+        const intraline = computeIntralineChangeRanges(
+            leftLines[leftLineIndex],
+            rightLines[rightLineIndex],
+            workBudget
+        );
+        const leftRangeCount = intraline.leftBounds.length / 2;
+        const rightRangeCount = intraline.rightBounds.length / 2;
+        const rowRangePairs = leftRangeCount + rightRangeCount;
+        const withinRowLimit = rowRangePairs <= modelLimits.maxRangePairsPerRow;
+        const withinModelLimit = stats.rangePairs + rowRangePairs <= modelLimits.maxRangePairsTotal;
+        const withinWorkBudget = rowRangePairs <= workBudget.remainingRangePairs;
+        const usePreciseRanges = intraline.detailMode === 'precise'
+            && withinRowLimit && withinModelLimit && withinWorkBudget;
+
+        if (!usePreciseRanges) {
+            stats.wholeLineRows++;
+            return {
+                type: 'modified',
+                leftLineIndex: leftLineIndex,
+                rightLineIndex: rightLineIndex,
+                leftRangeOffset: rangePool.length,
+                leftRangeCount: 0,
+                rightRangeOffset: rangePool.length,
+                rightRangeCount: 0,
+                detailMode: 'whole-line'
+            };
+        }
+
+        const leftRangeOffset = rangePool.length;
+        appendBoundsToPool(rangePool, intraline.leftBounds);
+        const rightRangeOffset = rangePool.length;
+        appendBoundsToPool(rangePool, intraline.rightBounds);
+        workBudget.remainingRangePairs -= rowRangePairs;
+        stats.rangePairs += rowRangePairs;
+        stats.preciseModifiedRows++;
+
+        return {
+            type: 'modified',
+            leftLineIndex: leftLineIndex,
+            rightLineIndex: rightLineIndex,
+            leftRangeOffset: leftRangeOffset,
+            leftRangeCount: leftRangeCount,
+            rightRangeOffset: rightRangeOffset,
+            rightRangeCount: rightRangeCount,
+            detailMode: 'precise'
+        };
+    };
+}
+
+function computeDiffModel(left, right, options) {
+    const validated = validateDiffInput(left, right);
+    if (!validated.ok) {
+        throw new Error(validated.message);
+    }
+
+    const workBudget = normalizeDiffWorkBudget(options && options.workBudget);
+    const modelLimits = {
+        maxRangePairsPerRow: resolvedModelLimit(
+            options,
+            'maxRangePairsPerRow',
+            DIFF_MODEL_LIMITS.maxRangePairsPerRow
+        ),
+        maxRangePairsTotal: resolvedModelLimit(
+            options,
+            'maxRangePairsTotal',
+            DIFF_MODEL_LIMITS.maxRangePairsTotal
+        )
+    };
+    const leftLines = validated.leftLines;
+    const rightLines = validated.rightLines;
+    const rows = [];
+    const rangePool = [];
+    const stats = {
+        matchedRows: 0,
+        modifiedRows: 0,
+        missingRows: 0,
+        addedRows: 0,
+        preciseModifiedRows: 0,
+        wholeLineRows: 0,
+        rangePairs: 0
+    };
+    const ranges = computeMyersRanges(leftLines, rightLines, {
+        maxEditDistance: DIFF_LIMITS.maxLineEditDistance
+    });
+    const createRow = createCompactRowFactory(
+        leftLines,
+        rightLines,
+        workBudget,
+        rangePool,
+        stats,
+        modelLimits
+    );
+    appendMyersRanges(leftLines, rightLines, ranges, rows, createRow);
+
+    const mismatchCount = stats.modifiedRows + stats.missingRows + stats.addedRows;
+    stats.workBudget = {
+        remainingMyersSteps: workBudget.remainingMyersSteps,
+        remainingAlignmentCells: workBudget.remainingAlignmentCells,
+        remainingCharEditDistance: workBudget.remainingCharEditDistance,
+        remainingRangePairs: workBudget.remainingRangePairs
+    };
+    return {
+        version: 2,
+        rows: rows,
+        changeBounds: Uint32Array.from(rangePool),
+        leftLineStarts: buildLineStarts(left),
+        rightLineStarts: buildLineStarts(right),
+        mismatchCount: mismatchCount,
+        stats: stats
+    };
 }
 
 function computeLineDiff(left, right) {
@@ -964,6 +1329,10 @@ function computeLineDiff(left, right) {
 }
 
 function countDifferenceRows(diffResult) {
+    if (diffResult && diffResult.version === 2) {
+        return diffResult.mismatchCount;
+    }
+
     let count = 0;
     for (let i = 0; i < diffResult.diff.length; i++) {
         const type = diffResult.diff[i].type;

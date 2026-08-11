@@ -24,6 +24,14 @@ this.scanDiffInput = typeof scanDiffInput === 'function' ? scanDiffInput : undef
 this.classifyDiffWork = typeof classifyDiffWork === 'function' ? classifyDiffWork : undefined;
 this.computeDiffModel = typeof computeDiffModel === 'function' ? computeDiffModel : undefined;
 this.splitDiffUnitsV2 = typeof splitDiffUnits === 'function' ? splitDiffUnits : undefined;
+this.computeIntralineChangeRanges = typeof computeIntralineChangeRanges === 'function'
+    ? computeIntralineChangeRanges
+    : undefined;
+this.createDiffWorkBudget = typeof createDiffWorkBudget === 'function' ? createDiffWorkBudget : undefined;
+this.DIFF_WORK_BUDGET_DEFAULTS = typeof DIFF_WORK_BUDGET_DEFAULTS === 'object'
+    ? DIFF_WORK_BUDGET_DEFAULTS
+    : undefined;
+this.DIFF_MODEL_LIMITS = typeof DIFF_MODEL_LIMITS === 'object' ? DIFF_MODEL_LIMITS : undefined;
 `, context);
     return context;
 }
@@ -52,6 +60,41 @@ function reconstructed(result) {
     }
 
     return { left: left.join('\n'), right: right.join('\n') };
+}
+
+function modelLine(source, starts, lineIndex) {
+    const start = starts[lineIndex];
+    const end = lineIndex + 1 < starts.length ? starts[lineIndex + 1] - 1 : source.length;
+    return source.slice(start, end);
+}
+
+function reconstructedFromModel(model, leftSource, rightSource) {
+    const left = [];
+    const right = [];
+
+    for (const row of model.rows) {
+        if (Number.isInteger(row.leftLineIndex)) {
+            left.push(modelLine(leftSource, model.leftLineStarts, row.leftLineIndex));
+        }
+        if (Number.isInteger(row.rightLineIndex)) {
+            right.push(modelLine(rightSource, model.rightLineStarts, row.rightLineIndex));
+        }
+    }
+
+    return { left: left.join('\n'), right: right.join('\n') };
+}
+
+function assertNoLegacyModelKeys(value) {
+    if (!value || typeof value !== 'object') return;
+
+    const forbidden = new Set([
+        'left', 'right', 'leftLines', 'rightLines', 'diff',
+        'leftChars', 'chars', 'leftHtml', 'rightHtml', 'html'
+    ]);
+    for (const key of Object.keys(value)) {
+        assert.equal(forbidden.has(key), false, 'unexpected legacy/source key: ' + key);
+        assertNoLegacyModelKeys(value[key]);
+    }
 }
 
 function editDistanceFromRanges(ranges) {
@@ -348,6 +391,142 @@ test('compact v2 ranges preserve grapheme boundaries and reconstruct both source
 
     assert.equal(rebuilt.left.join('\n'), left);
     assert.equal(rebuilt.right.join('\n'), right);
+});
+
+test('DiffModelV2 uses source-free rows and exact line-start arrays', function () {
+    const cases = [
+        ['', ''],
+        ['a', 'a\n'],
+        ['a\n', 'a'],
+        ['same\nleft only\nend', 'same\nright only\nend'],
+        ['a\r\n😀\n', 'a\r\n😃\n']
+    ];
+
+    for (const [left, right] of cases) {
+        const model = diff.computeDiffModel(left, right);
+
+        assert.equal(Object.hasOwn(model, 'left'), false);
+        assert.equal(Object.hasOwn(model, 'right'), false);
+        assert.equal(Object.hasOwn(model, 'leftLines'), false);
+        assert.equal(Object.hasOwn(model, 'rightLines'), false);
+        assert.equal(Object.hasOwn(model, 'diff'), false);
+        assertNoLegacyModelKeys(model);
+        assert.deepEqual(reconstructedFromModel(model, left, right), { left, right });
+
+        const leftIndexes = Array.from(model.rows)
+            .filter(function (row) { return Number.isInteger(row.leftLineIndex); })
+            .map(function (row) { return row.leftLineIndex; });
+        const rightIndexes = Array.from(model.rows)
+            .filter(function (row) { return Number.isInteger(row.rightLineIndex); })
+            .map(function (row) { return row.rightLineIndex; });
+        assert.deepEqual(leftIndexes, Array.from({ length: model.leftLineStarts.length }, function (_, i) { return i; }));
+        assert.deepEqual(rightIndexes, Array.from({ length: model.rightLineStarts.length }, function (_, i) { return i; }));
+
+        assert.equal(model.leftLineStarts.byteLength, model.leftLineStarts.length * Uint32Array.BYTES_PER_ELEMENT);
+        assert.equal(model.rightLineStarts.byteLength, model.rightLineStarts.length * Uint32Array.BYTES_PER_ELEMENT);
+        assert.equal(model.changeBounds.byteLength, model.changeBounds.length * Uint32Array.BYTES_PER_ELEMENT);
+    }
+
+    assert.deepEqual(Array.from(diff.computeDiffModel('', '').leftLineStarts), [0]);
+    assert.deepEqual(Array.from(diff.computeDiffModel('\n', '\n').leftLineStarts), [0, 1]);
+    assert.deepEqual(Array.from(diff.computeDiffModel('a\n', 'a\n').leftLineStarts), [0, 2]);
+    assert.deepEqual(Array.from(diff.computeDiffModel('a\n\n', 'a\n\n').leftLineStarts), [0, 2, 3]);
+    assert.deepEqual(
+        Array.from(diff.computeDiffModel('a\r\n😀\n', 'a\r\n😀\n').leftLineStarts),
+        [0, 3, 6]
+    );
+});
+
+test('compact intraline ranges use half-open UTF-16 grapheme offsets', function () {
+    const emoji = diff.computeDiffModel('a😀b', 'a😃b');
+    const emojiRow = emoji.rows[0];
+    assert.equal(emojiRow.detailMode, 'precise');
+    assert.equal(emojiRow.leftRangeOffset, 0);
+    assert.equal(emojiRow.leftRangeCount, 1);
+    assert.equal(emojiRow.rightRangeOffset, 2);
+    assert.equal(emojiRow.rightRangeCount, 1);
+    assert.deepEqual(Array.from(emoji.changeBounds), [1, 3, 1, 3]);
+
+    const combining = diff.computeDiffModel('Cafe\u0301', 'Cafe');
+    const combiningRow = combining.rows[0];
+    assert.equal(combiningRow.detailMode, 'precise');
+    assert.deepEqual(Array.from(combining.changeBounds), [3, 5, 3, 4]);
+
+    const separated = diff.computeDiffModel('axbxc', 'aybyc');
+    const separatedRow = separated.rows[0];
+    assert.equal(separatedRow.leftRangeCount, 2);
+    assert.equal(separatedRow.rightRangeCount, 2);
+    assert.deepEqual(Array.from(separated.changeBounds), [1, 2, 3, 4, 1, 2, 3, 4]);
+});
+
+test('DiffWorkBudget and model range limits use atomic whole-line fallback', function () {
+    assert.deepEqual(
+        Object.assign({}, diff.DIFF_WORK_BUDGET_DEFAULTS),
+        {
+            remainingMyersSteps: 40000000,
+            remainingAlignmentCells: 2000000,
+            remainingCharEditDistance: 50000,
+            remainingRangePairs: 200000
+        }
+    );
+    assert.deepEqual(
+        Object.assign({}, diff.DIFF_MODEL_LIMITS),
+        { maxRangePairsPerRow: 4096, maxRangePairsTotal: 200000 }
+    );
+
+    const rowLimited = diff.computeDiffModel('axbxc', 'aybyc', {
+        modelLimits: { maxRangePairsPerRow: 3 }
+    });
+    assert.equal(rowLimited.rows[0].detailMode, 'whole-line');
+    assert.equal(rowLimited.rows[0].leftRangeCount, 0);
+    assert.equal(rowLimited.rows[0].rightRangeCount, 0);
+    assert.equal(rowLimited.changeBounds.length, 0);
+    assert.equal(rowLimited.stats.rangePairs, 0);
+    assert.equal(rowLimited.stats.wholeLineRows, 1);
+
+    const rangeBudget = diff.createDiffWorkBudget({ remainingRangePairs: 1 });
+    const budgetLimited = diff.computeDiffModel('aXb', 'aYb', { workBudget: rangeBudget });
+    assert.equal(budgetLimited.rows[0].detailMode, 'whole-line');
+    assert.equal(budgetLimited.changeBounds.length, 0);
+    assert.equal(rangeBudget.remainingRangePairs, 1);
+
+    const totalLimited = diff.computeDiffModel(
+        'aXb\nanchor\ncXd',
+        'aYb\nanchor\ncYd',
+        { modelLimits: { maxRangePairsTotal: 2 } }
+    );
+    const modifiedRows = Array.from(totalLimited.rows).filter(function (row) { return row.type === 'modified'; });
+    assert.deepEqual(modifiedRows.map(function (row) { return row.detailMode; }), ['precise', 'whole-line']);
+    assert.deepEqual(Array.from(totalLimited.changeBounds), [1, 2, 1, 2]);
+    assert.equal(modifiedRows[1].leftRangeOffset, 4);
+    assert.equal(modifiedRows[1].rightRangeOffset, 4);
+    assert.equal(totalLimited.stats.rangePairs, 2);
+    assert.deepEqual(
+        Object.assign({}, totalLimited.stats.workBudget),
+        {
+            remainingMyersSteps: 40000000,
+            remainingAlignmentCells: 2000000,
+            remainingCharEditDistance: 49996,
+            remainingRangePairs: 199998
+        }
+    );
+
+    const charBudget = diff.createDiffWorkBudget({ remainingCharEditDistance: 1 });
+    const charLimited = diff.computeDiffModel('aXb', 'aYb', { workBudget: charBudget });
+    assert.equal(charLimited.rows[0].detailMode, 'whole-line');
+    assert.equal(charLimited.changeBounds.length, 0);
+    assert.equal(charBudget.remainingCharEditDistance, 0);
+});
+
+test('legacy diff and HTML APIs remain compatible beside DiffModelV2', function () {
+    const legacy = diff.computeLineDiff('a\nCafe\u0301', 'a\nCafe');
+    assert.deepEqual(Array.from(legacy.diff, function (row) { return row.type; }), ['match', 'modified']);
+    assert.equal(legacy.diff[1].leftChars.at(-1).c, 'e\u0301');
+    assert.match(diff.buildPanelHtml(legacy, 'left'), /diff-mismatch/);
+    assert.equal(diff.countDifferenceRows(legacy), 1);
+
+    const model = diff.computeDiffModel('a\nCafe\u0301', 'a\nCafe');
+    assert.equal(diff.countDifferenceRows(model), 1);
 });
 
 test('bounded row alignment finds both globally compatible modified pairs', function () {
