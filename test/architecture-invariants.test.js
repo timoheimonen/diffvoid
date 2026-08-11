@@ -84,3 +84,11 @@ test('the package has no external dependency graph', function () {
     assert.equal(Object.hasOwn(packageJson, 'devDependencies'), false);
     assert.equal(Object.hasOwn(packageJson, 'optionalDependencies'), false);
 });
+
+test('the published application version is consistent', function () {
+    const version = JSON.parse(read('package.json')).version;
+
+    assert.match(version, /^\d+\.\d+\.\d+$/);
+    assert.ok(read('public/index.html').includes('<meta name="version" content="' + version + '">'));
+    assert.ok(read('public/about.html').includes('<div class="meta">Version ' + version + '</div>'));
+});
