@@ -26,8 +26,6 @@
         const copyCleanRightBtn = document.getElementById('copy-clean-right');
         const progressEl = document.getElementById('progress-indicator');
 
-        let chunkBuffer = { left: '', right: '' };
-        let chunkBatchCount = 0;
         let isProcessing = false;
         let storedLeftText = '';
         let storedRightText = '';
@@ -45,29 +43,22 @@
                 }
             },
             onProgress: function (message) {
-                if (message.type === 'diff:chunk') {
-                    chunkBuffer.left += message.leftHtml;
-                    chunkBuffer.right += message.rightHtml;
-                    chunkBatchCount++;
-                    showProgress('Processing ' + message.processed + ' of ' + message.total + ' entries...');
-
-                    if (chunkBatchCount >= 3) flushChunkBuffer();
-                    return;
-                }
-
-                if (message.phase === 'diff') {
+                if (message.phase === 'validation') {
+                    showProgress('Validating input...');
+                } else if (message.phase === 'lines' || message.phase === 'line-diff') {
+                    showProgress('Comparing lines...');
+                } else if (message.phase === 'details' || message.phase === 'intraline') {
+                    showProgress('Computing detailed changes...');
+                } else {
                     showProgress('Computing diff...');
                 }
             },
             onResult: function (model) {
-                if (model && model.leftHtml !== undefined && model.rightHtml !== undefined) {
-                    rendering = true;
-                    left.innerHTML = model.leftHtml;
-                    right.innerHTML = model.rightHtml;
-                    rendering = false;
-                } else {
-                    flushChunkBuffer();
-                }
+                const sources = { left: storedLeftText, right: storedRightText };
+                rendering = true;
+                left.innerHTML = buildPanelHtmlFromModel(model, sources, 'left');
+                right.innerHTML = buildPanelHtmlFromModel(model, sources, 'right');
+                rendering = false;
 
                 setCounter(model && Number.isFinite(model.mismatchCount) ? model.mismatchCount : 0);
                 hideProgress();
@@ -76,12 +67,11 @@
                 updateEmpty(left);
             },
             onError: function (error) {
-                resetChunkBuffer();
                 hideCounter();
                 showProgress(error && error.message ? error.message : 'Comparison failed.');
                 isProcessing = false;
             },
-            syncFallback: computeLegacyResult
+            syncFallback: computeModel
         });
 
         function setCopyButtonVisibility(leftText, rightText) {
@@ -104,23 +94,8 @@
             progressEl.style.display = 'none';
         }
 
-        function resetChunkBuffer() {
-            chunkBuffer = { left: '', right: '' };
-            chunkBatchCount = 0;
-        }
-
         function cancelComparison(invalidate) {
             controller.cancel({ invalidate: invalidate !== false });
-            resetChunkBuffer();
-        }
-
-        function flushChunkBuffer() {
-            if (!chunkBuffer.left && !chunkBuffer.right) return;
-            rendering = true;
-            left.insertAdjacentHTML('beforeend', chunkBuffer.left);
-            right.insertAdjacentHTML('beforeend', chunkBuffer.right);
-            rendering = false;
-            resetChunkBuffer();
         }
 
         const toggle = document.getElementById('theme-toggle');
@@ -228,7 +203,8 @@
                 return;
             }
 
-            const validation = validateDiffInput(lt, rt);
+            const scan = scanDiffInput(lt, rt);
+            const validation = validateScannedDiffInput(scan);
             if (!validation.ok) {
                 cancelComparison(true);
                 hideCounter();
@@ -236,7 +212,7 @@
                 return;
             }
 
-            const estimatedLines = validation.estimatedLines;
+            const classification = classifyDiffWork(lt, rt, scan);
             cancelComparison(false);
             rendering = true;
             left.innerHTML = '';
@@ -247,24 +223,13 @@
             controller.start({
                 left: lt,
                 right: rt,
-                isSyncSafe: estimatedLines <= 100,
-                syncFallback: computeLegacyResult
+                isSyncSafe: classification.isSyncSafe,
+                syncFallback: computeModel
             });
         }
 
-        function computeLegacyResult(lt, rt) {
-            let diffResult;
-            diffResult = computeLineDiff(lt, rt);
-            const rightHtml = buildPanelHtml(diffResult, 'right');
-            const leftHtml = buildPanelHtml(diffResult, 'left');
-            const mismatchCount = countDifferenceRows(diffResult);
-
-            return {
-                version: 1,
-                leftHtml: leftHtml,
-                rightHtml: rightHtml,
-                mismatchCount: mismatchCount
-            };
+        function computeModel(lt, rt) {
+            return computeDiffModel(lt, rt, { workBudget: createDiffWorkBudget() });
         }
 
         function preventTyping(e) {

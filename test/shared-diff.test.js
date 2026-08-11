@@ -32,6 +32,22 @@ this.DIFF_WORK_BUDGET_DEFAULTS = typeof DIFF_WORK_BUDGET_DEFAULTS === 'object'
     ? DIFF_WORK_BUDGET_DEFAULTS
     : undefined;
 this.DIFF_MODEL_LIMITS = typeof DIFF_MODEL_LIMITS === 'object' ? DIFF_MODEL_LIMITS : undefined;
+this.SYNC_DIFF_LIMITS = typeof SYNC_DIFF_LIMITS === 'object' ? SYNC_DIFF_LIMITS : undefined;
+this.validateScannedDiffInput = typeof validateScannedDiffInput === 'function'
+    ? validateScannedDiffInput
+    : undefined;
+this.buildPanelHtmlFromModel = typeof buildPanelHtmlFromModel === 'function'
+    ? buildPanelHtmlFromModel
+    : undefined;
+this.buildPanelHtmlRangeFromModel = typeof buildPanelHtmlRangeFromModel === 'function'
+    ? buildPanelHtmlRangeFromModel
+    : undefined;
+this.DIFF_DEADLINE_ERROR_CODE = typeof DIFF_DEADLINE_ERROR_CODE === 'string'
+    ? DIFF_DEADLINE_ERROR_CODE
+    : undefined;
+this.DIFF_MYERS_BUDGET_ERROR_CODE = typeof DIFF_MYERS_BUDGET_ERROR_CODE === 'string'
+    ? DIFF_MYERS_BUDGET_ERROR_CODE
+    : undefined;
 `, context);
     return context;
 }
@@ -490,10 +506,14 @@ test('DiffWorkBudget and model range limits use atomic whole-line fallback', fun
     assert.equal(budgetLimited.changeBounds.length, 0);
     assert.equal(rangeBudget.remainingRangePairs, 1);
 
+    const totalWorkBudget = diff.createDiffWorkBudget();
     const totalLimited = diff.computeDiffModel(
         'aXb\nanchor\ncXd',
         'aYb\nanchor\ncYd',
-        { modelLimits: { maxRangePairsTotal: 2 } }
+        {
+            modelLimits: { maxRangePairsTotal: 2 },
+            workBudget: totalWorkBudget
+        }
     );
     const modifiedRows = Array.from(totalLimited.rows).filter(function (row) { return row.type === 'modified'; });
     assert.deepEqual(modifiedRows.map(function (row) { return row.detailMode; }), ['precise', 'whole-line']);
@@ -501,15 +521,11 @@ test('DiffWorkBudget and model range limits use atomic whole-line fallback', fun
     assert.equal(modifiedRows[1].leftRangeOffset, 4);
     assert.equal(modifiedRows[1].rightRangeOffset, 4);
     assert.equal(totalLimited.stats.rangePairs, 2);
-    assert.deepEqual(
-        Object.assign({}, totalLimited.stats.workBudget),
-        {
-            remainingMyersSteps: 40000000,
-            remainingAlignmentCells: 2000000,
-            remainingCharEditDistance: 49996,
-            remainingRangePairs: 199998
-        }
-    );
+    assert.deepEqual(Object.assign({}, totalLimited.stats.workBudget), Object.assign({}, totalWorkBudget));
+    assert.equal(totalWorkBudget.remainingMyersSteps < 40000000, true);
+    assert.equal(totalWorkBudget.remainingAlignmentCells, 2000000);
+    assert.equal(totalWorkBudget.remainingCharEditDistance, 49996);
+    assert.equal(totalWorkBudget.remainingRangePairs, 199998);
 
     const charBudget = diff.createDiffWorkBudget({ remainingCharEditDistance: 1 });
     const charLimited = diff.computeDiffModel('aXb', 'aYb', { workBudget: charBudget });
@@ -527,6 +543,170 @@ test('legacy diff and HTML APIs remain compatible beside DiffModelV2', function 
 
     const model = diff.computeDiffModel('a\nCafe\u0301', 'a\nCafe');
     assert.equal(diff.countDifferenceRows(model), 1);
+});
+
+test('linear input scan and sync classification expose the centralized routing contract', function () {
+    const left = 'a b\n\u200B\u0410';
+    const right = 'x\u00A0';
+    const scan = diff.scanDiffInput(left, right);
+
+    assert.deepEqual(
+        Object.assign({}, scan),
+        {
+            leftChars: 6,
+            rightChars: 2,
+            totalChars: 8,
+            leftLines: 2,
+            rightLines: 1,
+            totalLines: 3,
+            maxLineChars: 3,
+            spanRiskChars: 4
+        }
+    );
+    assert.deepEqual(Object.assign({}, diff.SYNC_DIFF_LIMITS), {
+        maxCost: 65536,
+        maxTotalChars: 32768,
+        maxLinesPerSide: 200,
+        maxLineChars: 16384,
+        maxSpanRiskChars: 1024,
+        lineWeight: 16,
+        lineEditWeight: 256,
+        spanRiskWeight: 64
+    });
+    assert.equal(diff.validateScannedDiffInput(scan).ok, true);
+    assert.match(
+        diff.validateScannedDiffInput(diff.scanDiffInput('x'.repeat(100001), 'a')).message,
+        /Maximum 100,000 characters per line/
+    );
+
+    const smallLeft = 'a\nb';
+    const smallRight = 'a\nc';
+    const smallScan = diff.scanDiffInput(smallLeft, smallRight);
+    const small = diff.classifyDiffWork(smallLeft, smallRight, smallScan);
+    assert.equal(small.isSyncSafe, true);
+    assert.equal(small.lineEditLowerBound, 2);
+    assert.equal(small.cost, 582);
+
+    const decoratedLeft = ' '.repeat(1025);
+    const decorated = diff.classifyDiffWork(
+        decoratedLeft,
+        'a',
+        diff.scanDiffInput(decoratedLeft, 'a')
+    );
+    assert.equal(decorated.isSyncSafe, false);
+    assert.equal(decorated.lineEditLowerBound, null);
+    assert.match(decorated.reason, /Decorated character/);
+});
+
+test('shared Myers work budget is terminal for lines and degrades only intraline detail', function () {
+    const exhaustedLineBudget = diff.createDiffWorkBudget({ remainingMyersSteps: 0 });
+    assert.throws(
+        function () {
+            diff.computeDiffModel('same', 'same', { workBudget: exhaustedLineBudget });
+        },
+        function (err) {
+            assert.equal(err.code, diff.DIFF_MYERS_BUDGET_ERROR_CODE);
+            return true;
+        }
+    );
+
+    const intralineBudget = diff.createDiffWorkBudget({ remainingMyersSteps: 100 });
+    const progress = [];
+    const model = diff.computeDiffModel('aXb', 'aYb', {
+        workBudget: intralineBudget,
+        onProgress: function (update) {
+            progress.push({
+                phase: update.phase,
+                processed: update.processed,
+                total: update.total
+            });
+            if (update.phase === 'line-diff' && update.processed === update.total) {
+                intralineBudget.remainingMyersSteps = 0;
+            }
+        }
+    });
+
+    assert.equal(model.rows[0].type, 'modified');
+    assert.equal(model.rows[0].detailMode, 'whole-line');
+    assert.equal(model.changeBounds.length, 0);
+    assert.equal(intralineBudget.remainingMyersSteps, 0);
+    assert.deepEqual(progress, [
+        { phase: 'line-diff', processed: 0, total: 1 },
+        { phase: 'line-diff', processed: 1, total: 1 },
+        { phase: 'intraline', processed: 0, total: 1 },
+        { phase: 'intraline', processed: 1, total: 1 }
+    ]);
+});
+
+test('deadline failures remain terminal with a stable code in line and intraline Myers', function () {
+    assert.equal(diff.DIFF_DEADLINE_ERROR_CODE, 'DIFF_DEADLINE_EXCEEDED');
+    assert.throws(
+        function () {
+            diff.computeDiffModel('a', 'a', { deadlineAt: 1, now: function () { return 1; } });
+        },
+        function (err) {
+            assert.equal(err.code, 'DIFF_DEADLINE_EXCEEDED');
+            assert.match(err.message, /timed out/);
+            return true;
+        }
+    );
+
+    let intralineExpired = false;
+    assert.throws(
+        function () {
+            diff.computeDiffModel('aXb', 'aYb', {
+                deadlineAt: 1,
+                now: function () { return intralineExpired ? 1 : 0; },
+                onProgress: function (update) {
+                    if (update.phase === 'line-diff' && update.processed === update.total) {
+                        intralineExpired = true;
+                    }
+                }
+            });
+        },
+        function (err) {
+            assert.equal(err.code, 'DIFF_DEADLINE_EXCEEDED');
+            return true;
+        }
+    );
+});
+
+test('source-aware V2 HTML adapter matches legacy output without persisting sources or HTML', function () {
+    const left = 'same\nCafe\u0301\nleft only\nA\u200B\nend';
+    const right = 'same\nCafe\nright only\n\u0410\nextra\nend';
+    const sources = { left: left, right: right };
+    const legacy = diff.computeLineDiff(left, right);
+    const model = diff.computeDiffModel(left, right);
+
+    for (const side of ['left', 'right']) {
+        const expected = diff.buildPanelHtml(legacy, side);
+        const actual = diff.buildPanelHtmlFromModel(model, sources, side);
+        assert.equal(actual, expected);
+
+        const splitAt = Math.min(3, model.rows.length);
+        const chunked = diff.buildPanelHtmlRangeFromModel(model, sources, side, 0, splitAt).html
+            + diff.buildPanelHtmlRangeFromModel(model, sources, side, splitAt, model.rows.length).html;
+        assert.equal(chunked, expected);
+    }
+
+    assertNoLegacyModelKeys(model);
+    assert.throws(
+        function () { diff.buildPanelHtmlFromModel(model, null, 'left'); },
+        /requires the original left and right source strings/
+    );
+});
+
+test('V2 HTML adapter escapes untrusted source text', function () {
+    const attack = '<img src=x onerror="alert(1)">&<script>alert(2)</script>\u200B';
+    const model = diff.computeDiffModel(attack, attack);
+    const html = diff.buildPanelHtmlFromModel(model, { left: attack, right: attack }, 'left');
+
+    assert.doesNotMatch(html, /<img\b/i);
+    assert.doesNotMatch(html, /<script\b/i);
+    assert.match(html, /&lt;img src=x onerror="alert\(1\)"&gt;/);
+    assert.match(html, /&amp;/);
+    assert.match(html, /invisible-zwsp/);
+    assertNoLegacyModelKeys(model);
 });
 
 test('bounded row alignment finds both globally compatible modified pairs', function () {

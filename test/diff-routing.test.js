@@ -35,4 +35,10 @@ test('an accepted 20-line near-limit input is classified as worker-only before l
     assert.equal(classification.isSyncSafe, false);
     assert.equal(classification.lineEditLowerBound, null);
     assert.match(classification.reason, /character|cost|line/i);
+
+    const mainScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'script.js'), 'utf8');
+    assert.match(mainScript, /scanDiffInput\(lt, rt\)/);
+    assert.match(mainScript, /isSyncSafe:\s*classification\.isSyncSafe/);
+    assert.doesNotMatch(mainScript, /\bcomputeLineDiff\s*\(/);
+    assert.doesNotMatch(mainScript, /\bvalidateDiffInput\s*\(lt, rt\)/);
 });

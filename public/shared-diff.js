@@ -195,6 +195,17 @@ const DIFF_MODEL_LIMITS = {
     maxRangePairsTotal: 200000
 };
 
+const SYNC_DIFF_LIMITS = {
+    maxCost: 65536,
+    maxTotalChars: 32768,
+    maxLinesPerSide: 200,
+    maxLineChars: 16384,
+    maxSpanRiskChars: 1024,
+    lineWeight: 16,
+    lineEditWeight: 256,
+    spanRiskWeight: 64
+};
+
 const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
 const SHORT_LINE_SIMILARITY_THRESHOLD = 0.5;
 const SHORT_LINE_MAX_UNITS = 32;
@@ -239,41 +250,133 @@ function createDiffWorkBudget(overrides) {
     };
 }
 
-function validateDiffInput(left, right) {
-    if (left.length > DIFF_LIMITS.maxChars || right.length > DIFF_LIMITS.maxChars) {
+function scanDiffSide(text) {
+    let lineCount = 1;
+    let lineChars = 0;
+    let maxLineChars = 0;
+    let spanRiskChars = 0;
+
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        if (code === 0x000A) {
+            if (lineChars > maxLineChars) maxLineChars = lineChars;
+            lineChars = 0;
+            lineCount++;
+            continue;
+        }
+
+        lineChars++;
+        if (code === 0x0020) {
+            spanRiskChars++;
+        } else if (code > 0x007F && (isInvisibleCode(code) || isConfusableCode(code))) {
+            spanRiskChars++;
+        }
+    }
+
+    if (lineChars > maxLineChars) maxLineChars = lineChars;
+    return {
+        chars: text.length,
+        lines: lineCount,
+        maxLineChars: maxLineChars,
+        spanRiskChars: spanRiskChars
+    };
+}
+
+function scanDiffInput(left, right) {
+    const leftScan = scanDiffSide(left);
+    const rightScan = scanDiffSide(right);
+    return {
+        leftChars: leftScan.chars,
+        rightChars: rightScan.chars,
+        totalChars: leftScan.chars + rightScan.chars,
+        leftLines: leftScan.lines,
+        rightLines: rightScan.lines,
+        totalLines: leftScan.lines + rightScan.lines,
+        maxLineChars: Math.max(leftScan.maxLineChars, rightScan.maxLineChars),
+        spanRiskChars: leftScan.spanRiskChars + rightScan.spanRiskChars
+    };
+}
+
+function validateScannedDiffInput(scan) {
+    if (scan.leftChars > DIFF_LIMITS.maxChars || scan.rightChars > DIFF_LIMITS.maxChars) {
         return {
             ok: false,
             message: 'Text too large. Maximum ' + DIFF_LIMITS.maxChars.toLocaleString() + ' characters per side supported.'
         };
     }
 
-    const leftLines = left.split('\n');
-    const rightLines = right.split('\n');
-    const estimatedLines = Math.max(leftLines.length, rightLines.length);
-    if (estimatedLines > DIFF_LIMITS.maxLines) {
+    if (Math.max(scan.leftLines, scan.rightLines) > DIFF_LIMITS.maxLines) {
         return {
             ok: false,
             message: 'File too large. Maximum ' + DIFF_LIMITS.maxLines.toLocaleString() + ' lines supported.'
         };
     }
 
-    for (let i = 0; i < leftLines.length; i++) {
-        if (leftLines[i].length > DIFF_LIMITS.maxLineChars) {
-            return {
-                ok: false,
-                message: 'Line too long. Maximum ' + DIFF_LIMITS.maxLineChars.toLocaleString() + ' characters per line supported.'
-            };
-        }
+    if (scan.maxLineChars > DIFF_LIMITS.maxLineChars) {
+        return {
+            ok: false,
+            message: 'Line too long. Maximum ' + DIFF_LIMITS.maxLineChars.toLocaleString() + ' characters per line supported.'
+        };
     }
 
-    for (let i = 0; i < rightLines.length; i++) {
-        if (rightLines[i].length > DIFF_LIMITS.maxLineChars) {
-            return {
-                ok: false,
-                message: 'Line too long. Maximum ' + DIFF_LIMITS.maxLineChars.toLocaleString() + ' characters per line supported.'
-            };
-        }
+    return { ok: true };
+}
+
+function diffClassification(isSyncSafe, cost, lineEditLowerBound, reason, scan) {
+    return {
+        isSyncSafe: isSyncSafe,
+        cost: cost,
+        lineEditLowerBound: lineEditLowerBound,
+        reason: reason,
+        scan: scan
+    };
+}
+
+function classifyDiffWork(left, right, scan) {
+    const inputScan = scan || scanDiffInput(left, right);
+    const validation = validateScannedDiffInput(inputScan);
+    const cheapCost = inputScan.totalChars
+        + (SYNC_DIFF_LIMITS.lineWeight * inputScan.totalLines)
+        + (SYNC_DIFF_LIMITS.spanRiskWeight * inputScan.spanRiskChars);
+
+    if (!validation.ok) {
+        return diffClassification(false, cheapCost, null, validation.message, inputScan);
     }
+    if (inputScan.totalChars > SYNC_DIFF_LIMITS.maxTotalChars) {
+        return diffClassification(false, cheapCost, null, 'Character count requires a Web Worker.', inputScan);
+    }
+    if (Math.max(inputScan.leftLines, inputScan.rightLines) > SYNC_DIFF_LIMITS.maxLinesPerSide) {
+        return diffClassification(false, cheapCost, null, 'Line count requires a Web Worker.', inputScan);
+    }
+    if (inputScan.maxLineChars > SYNC_DIFF_LIMITS.maxLineChars) {
+        return diffClassification(false, cheapCost, null, 'Line length requires a Web Worker.', inputScan);
+    }
+    if (inputScan.spanRiskChars > SYNC_DIFF_LIMITS.maxSpanRiskChars) {
+        return diffClassification(false, cheapCost, null, 'Decorated character count requires a Web Worker.', inputScan);
+    }
+    if (cheapCost > SYNC_DIFF_LIMITS.maxCost) {
+        return diffClassification(false, cheapCost, null, 'Estimated comparison cost requires a Web Worker.', inputScan);
+    }
+
+    const leftLines = left.split('\n');
+    const rightLines = right.split('\n');
+    const lineEditLowerBound = estimateEditDistanceLowerBound(leftLines, rightLines);
+    const cost = cheapCost + (SYNC_DIFF_LIMITS.lineEditWeight * lineEditLowerBound);
+    if (cost > SYNC_DIFF_LIMITS.maxCost) {
+        return diffClassification(false, cost, lineEditLowerBound, 'Estimated comparison cost requires a Web Worker.', inputScan);
+    }
+
+    return diffClassification(true, cost, lineEditLowerBound, 'Safe for synchronous comparison.', inputScan);
+}
+
+function validateDiffInput(left, right) {
+    const scan = scanDiffInput(left, right);
+    const scannedValidation = validateScannedDiffInput(scan);
+    if (!scannedValidation.ok) return scannedValidation;
+
+    const leftLines = left.split('\n');
+    const rightLines = right.split('\n');
+    const estimatedLines = Math.max(leftLines.length, rightLines.length);
 
     const lineEditLowerBound = estimateEditDistanceLowerBound(leftLines, rightLines);
     if (lineEditLowerBound > DIFF_LIMITS.maxLineEditDistance) {
@@ -283,7 +386,14 @@ function validateDiffInput(left, right) {
         };
     }
 
-    return { ok: true, leftLines: leftLines, rightLines: rightLines, estimatedLines: estimatedLines };
+    return {
+        ok: true,
+        leftLines: leftLines,
+        rightLines: rightLines,
+        estimatedLines: estimatedLines,
+        scan: scan,
+        lineEditLowerBound: lineEditLowerBound
+    };
 }
 
 function splitDiffUnits(text) {
@@ -426,7 +536,86 @@ function atomicOpsToRanges(ops, leftOffset, rightOffset) {
     return mergeMyersRanges(ranges);
 }
 
-function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance) {
+const DIFF_DEADLINE_ERROR_CODE = 'DIFF_DEADLINE_EXCEEDED';
+const DIFF_MYERS_BUDGET_ERROR_CODE = 'DIFF_MYERS_BUDGET_EXCEEDED';
+const DIFF_DEADLINE_CHECK_INTERVAL = 1024;
+
+function createCodedDiffError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function defaultDiffNow() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function createDiffExecutionContext(options, workBudget) {
+    const deadlineAt = options && typeof options.deadlineAt === 'number'
+        ? options.deadlineAt
+        : null;
+    return {
+        workBudget: workBudget ? normalizeDiffWorkBudget(workBudget) : null,
+        deadlineAt: deadlineAt,
+        now: options && typeof options.now === 'function' ? options.now : defaultDiffNow,
+        deadlineWorkSinceCheck: 0
+    };
+}
+
+function resolveDiffExecutionContext(options) {
+    if (options && options.executionContext) return options.executionContext;
+    if (options && (options.workBudget || typeof options.deadlineAt === 'number')) {
+        return createDiffExecutionContext(options, options.workBudget);
+    }
+    return null;
+}
+
+function checkDiffDeadline(executionContext, force) {
+    if (!executionContext || executionContext.deadlineAt === null) return;
+    if (!force && executionContext.deadlineWorkSinceCheck < DIFF_DEADLINE_CHECK_INTERVAL) return;
+
+    executionContext.deadlineWorkSinceCheck = 0;
+    if (executionContext.now() >= executionContext.deadlineAt) {
+        throw createCodedDiffError(
+            DIFF_DEADLINE_ERROR_CODE,
+            'Comparison timed out. Try smaller sections.'
+        );
+    }
+}
+
+function consumeMyersWork(executionContext, amount) {
+    if (!executionContext) return;
+
+    const work = amount || 1;
+    const budget = executionContext.workBudget;
+    if (budget) {
+        if (budget.remainingMyersSteps < work) {
+            budget.remainingMyersSteps = 0;
+            throw createCodedDiffError(
+                DIFF_MYERS_BUDGET_ERROR_CODE,
+                'Comparison is too complex for a safe browser-side diff. Try smaller sections.'
+            );
+        }
+        budget.remainingMyersSteps -= work;
+    }
+
+    executionContext.deadlineWorkSinceCheck += work;
+    checkDiffDeadline(executionContext, false);
+}
+
+function buildMyersTraceRanges(
+    left,
+    right,
+    leftStart,
+    leftEnd,
+    rightStart,
+    rightEnd,
+    maxEditDistance,
+    executionContext
+) {
     const n = leftEnd - leftStart;
     const m = rightEnd - rightStart;
     const max = Math.min(n + m, maxEditDistance);
@@ -439,6 +628,7 @@ function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, righ
 
     for (let d = 0; d <= max; d++) {
         for (let k = -d; k <= d; k += 2) {
+            consumeMyersWork(executionContext, 1);
             const kOffset = offset + k;
             let x;
             if (k === -d || (k !== d && v[kOffset - 1] < v[kOffset + 1])) {
@@ -449,6 +639,7 @@ function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, righ
 
             let y = x - k;
             while (x < n && y < m && left[leftStart + x] === right[rightStart + y]) {
+                consumeMyersWork(executionContext, 1);
                 x++;
                 y++;
             }
@@ -456,7 +647,15 @@ function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, righ
             v[kOffset] = x;
             if (x >= n && y >= m) {
                 trace.push(v.slice());
-                return backtrackMyersTrace(trace, n, m, offset, leftStart, rightStart);
+                return backtrackMyersTrace(
+                    trace,
+                    n,
+                    m,
+                    offset,
+                    leftStart,
+                    rightStart,
+                    executionContext
+                );
             }
         }
 
@@ -466,12 +665,13 @@ function buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, righ
     throw new Error('These texts are too different to compare safely in your browser. Try smaller sections or more similar files.');
 }
 
-function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset) {
+function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset, executionContext) {
     let x = n;
     let y = m;
     const reversedOps = [];
 
     for (let d = trace.length - 1; d > 0; d--) {
+        consumeMyersWork(executionContext, 1);
         const vPrev = trace[d - 1];
         const k = x - y;
         let prevK;
@@ -485,6 +685,7 @@ function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset) {
         const prevY = prevX - prevK;
 
         while (x > prevX && y > prevY) {
+            consumeMyersWork(executionContext, 1);
             reversedOps.push('equal');
             x--;
             y--;
@@ -500,6 +701,7 @@ function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset) {
     }
 
     while (x > 0 && y > 0) {
+        consumeMyersWork(executionContext, 1);
         reversedOps.push('equal');
         x--;
         y--;
@@ -508,7 +710,16 @@ function backtrackMyersTrace(trace, n, m, offset, leftOffset, rightOffset) {
     return atomicOpsToRanges(reversedOps.reverse(), leftOffset, rightOffset);
 }
 
-function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance) {
+function findMyersSplit(
+    left,
+    right,
+    leftStart,
+    leftEnd,
+    rightStart,
+    rightEnd,
+    maxEditDistance,
+    executionContext
+) {
     const n = leftEnd - leftStart;
     const m = rightEnd - rightStart;
     const max = Math.ceil((n + m) / 2);
@@ -535,6 +746,7 @@ function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, m
             if (steps > DIFF_LIMITS.maxMyersCells) {
                 throw new Error('Comparison is too complex for a safe browser-side diff. Try smaller sections.');
             }
+            consumeMyersWork(executionContext, 1);
 
             const kOffset = vOffset + k;
             let x;
@@ -546,6 +758,7 @@ function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, m
 
             let y = x - k;
             while (x < n && y < m && left[leftStart + x] === right[rightStart + y]) {
+                consumeMyersWork(executionContext, 1);
                 x++;
                 y++;
             }
@@ -567,6 +780,7 @@ function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, m
             if (steps > DIFF_LIMITS.maxMyersCells) {
                 throw new Error('Comparison is too complex for a safe browser-side diff. Try smaller sections.');
             }
+            consumeMyersWork(executionContext, 1);
 
             const kOffset = vOffset + k;
             let x;
@@ -578,6 +792,7 @@ function findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, m
 
             let y = x - k;
             while (x < n && y < m && left[leftEnd - x - 1] === right[rightEnd - y - 1]) {
+                consumeMyersWork(executionContext, 1);
                 x++;
                 y++;
             }
@@ -602,8 +817,11 @@ function computeMyersRanges(left, right, options) {
     const maxEditDistance = options && typeof options.maxEditDistance === 'number'
         ? options.maxEditDistance
         : DIFF_LIMITS.maxLineEditDistance;
+    const executionContext = resolveDiffExecutionContext(options);
     const stack = [{ leftStart: 0, leftEnd: left.length, rightStart: 0, rightEnd: right.length }];
     const output = [];
+
+    checkDiffDeadline(executionContext, true);
 
     while (stack.length) {
         const frame = stack.pop();
@@ -613,8 +831,9 @@ function computeMyersRanges(left, right, options) {
         let rightEnd = frame.rightEnd;
 
         let prefix = 0;
-        while (leftStart + prefix < leftEnd && rightStart + prefix < rightEnd
-            && left[leftStart + prefix] === right[rightStart + prefix]) {
+        while (leftStart + prefix < leftEnd && rightStart + prefix < rightEnd) {
+            consumeMyersWork(executionContext, 1);
+            if (left[leftStart + prefix] !== right[rightStart + prefix]) break;
             prefix++;
         }
 
@@ -631,8 +850,9 @@ function computeMyersRanges(left, right, options) {
         }
 
         let suffix = 0;
-        while (leftStart + suffix < leftEnd && rightStart + suffix < rightEnd
-            && left[leftEnd - suffix - 1] === right[rightEnd - suffix - 1]) {
+        while (leftStart + suffix < leftEnd && rightStart + suffix < rightEnd) {
+            consumeMyersWork(executionContext, 1);
+            if (left[leftEnd - suffix - 1] !== right[rightEnd - suffix - 1]) break;
             suffix++;
         }
 
@@ -682,22 +902,50 @@ function computeMyersRanges(left, right, options) {
             left.slice(leftStart, leftEnd),
             right.slice(rightStart, rightEnd)
         );
+        checkDiffDeadline(executionContext, true);
         if (lowerBound > maxEditDistance) {
             throw new Error('These texts are too different to compare safely in your browser. Try smaller sections or more similar files.');
         }
 
         if (leftLength + rightLength <= MYERS_TRACE_MAX_ITEMS) {
-            output.push.apply(output, buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance));
+            output.push.apply(output, buildMyersTraceRanges(
+                left,
+                right,
+                leftStart,
+                leftEnd,
+                rightStart,
+                rightEnd,
+                maxEditDistance,
+                executionContext
+            ));
             if (suffixRange) output.push(suffixRange);
             continue;
         }
 
-        const split = findMyersSplit(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance);
+        const split = findMyersSplit(
+            left,
+            right,
+            leftStart,
+            leftEnd,
+            rightStart,
+            rightEnd,
+            maxEditDistance,
+            executionContext
+        );
         if (!split
             || (split.leftMid === leftStart && split.rightMid === rightStart)
             || (split.leftMid === leftEnd && split.rightMid === rightEnd)) {
             if (leftLength + rightLength <= MYERS_TRACE_MAX_ITEMS) {
-                output.push.apply(output, buildMyersTraceRanges(left, right, leftStart, leftEnd, rightStart, rightEnd, maxEditDistance));
+                output.push.apply(output, buildMyersTraceRanges(
+                    left,
+                    right,
+                    leftStart,
+                    leftEnd,
+                    rightStart,
+                    rightEnd,
+                    maxEditDistance,
+                    executionContext
+                ));
                 if (suffixRange) output.push(suffixRange);
                 continue;
             }
@@ -716,6 +964,7 @@ function computeMyersRanges(left, right, options) {
         stack.push({ leftStart: leftStart, leftEnd: split.leftMid, rightStart: rightStart, rightEnd: split.rightMid });
     }
 
+    checkDiffDeadline(executionContext, true);
     return mergeMyersRanges(output);
 }
 
@@ -771,8 +1020,9 @@ function intralineWholeLineResult() {
     };
 }
 
-function computeIntralineChangeRanges(left, right, workBudget) {
+function computeIntralineChangeRanges(left, right, workBudget, executionContext) {
     const budget = normalizeDiffWorkBudget(workBudget);
+    const execution = executionContext || createDiffExecutionContext({}, budget);
     const leftSplit = splitDiffUnits(left);
     const rightSplit = splitDiffUnits(right);
     const maxEditDistance = Math.min(
@@ -787,9 +1037,14 @@ function computeIntralineChangeRanges(left, right, workBudget) {
     let ranges;
     try {
         ranges = computeMyersRanges(leftSplit.units, rightSplit.units, {
-            maxEditDistance: maxEditDistance
+            maxEditDistance: maxEditDistance,
+            executionContext: execution
         });
     } catch (err) {
+        if (err && err.code === DIFF_DEADLINE_ERROR_CODE) throw err;
+        if (err && err.code === DIFF_MYERS_BUDGET_ERROR_CODE) {
+            return intralineWholeLineResult();
+        }
         budget.remainingCharEditDistance = 0;
         return intralineWholeLineResult();
     }
@@ -1177,7 +1432,15 @@ function appendBoundsToPool(pool, bounds) {
     }
 }
 
-function createCompactRowFactory(leftLines, rightLines, workBudget, rangePool, stats, modelLimits) {
+function createCompactRowFactory(
+    leftLines,
+    rightLines,
+    workBudget,
+    rangePool,
+    stats,
+    modelLimits,
+    executionContext
+) {
     return function (type, leftLineIndex, rightLineIndex) {
         if (type === 'match') {
             stats.matchedRows++;
@@ -1202,7 +1465,8 @@ function createCompactRowFactory(leftLines, rightLines, workBudget, rangePool, s
         const intraline = computeIntralineChangeRanges(
             leftLines[leftLineIndex],
             rightLines[rightLineIndex],
-            workBudget
+            workBudget,
+            executionContext
         );
         const leftRangeCount = intraline.leftBounds.length / 2;
         const rightRangeCount = intraline.rightBounds.length / 2;
@@ -1248,13 +1512,22 @@ function createCompactRowFactory(leftLines, rightLines, workBudget, rangePool, s
     };
 }
 
+function reportDiffProgress(options, phase, processed, total) {
+    if (!options || typeof options.onProgress !== 'function') return;
+    options.onProgress({ phase: phase, processed: processed, total: total });
+}
+
 function computeDiffModel(left, right, options) {
+    const workBudget = normalizeDiffWorkBudget(options && options.workBudget);
+    const executionContext = createDiffExecutionContext(options || {}, workBudget);
+    checkDiffDeadline(executionContext, true);
+
     const validated = validateDiffInput(left, right);
     if (!validated.ok) {
         throw new Error(validated.message);
     }
+    checkDiffDeadline(executionContext, true);
 
-    const workBudget = normalizeDiffWorkBudget(options && options.workBudget);
     const modelLimits = {
         maxRangePairsPerRow: resolvedModelLimit(
             options,
@@ -1280,18 +1553,26 @@ function computeDiffModel(left, right, options) {
         wholeLineRows: 0,
         rangePairs: 0
     };
+    const progressTotal = Math.max(leftLines.length, rightLines.length);
+    reportDiffProgress(options, 'line-diff', 0, progressTotal);
     const ranges = computeMyersRanges(leftLines, rightLines, {
-        maxEditDistance: DIFF_LIMITS.maxLineEditDistance
+        maxEditDistance: DIFF_LIMITS.maxLineEditDistance,
+        executionContext: executionContext
     });
+    reportDiffProgress(options, 'line-diff', progressTotal, progressTotal);
+    reportDiffProgress(options, 'intraline', 0, progressTotal);
     const createRow = createCompactRowFactory(
         leftLines,
         rightLines,
         workBudget,
         rangePool,
         stats,
-        modelLimits
+        modelLimits,
+        executionContext
     );
     appendMyersRanges(leftLines, rightLines, ranges, rows, createRow);
+    checkDiffDeadline(executionContext, true);
+    reportDiffProgress(options, 'intraline', progressTotal, progressTotal);
 
     const mismatchCount = stats.modifiedRows + stats.missingRows + stats.addedRows;
     stats.workBudget = {
@@ -1442,4 +1723,125 @@ function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
 
 function buildPanelHtml(diffResult, side) {
     return buildPanelHtmlRange(diffResult, side, 0, diffResult.diff.length).html;
+}
+
+function getModelSourceLine(model, sources, side, lineIndex) {
+    const source = sources[side];
+    const starts = side === 'right' ? model.rightLineStarts : model.leftLineStarts;
+    const start = starts[lineIndex];
+    const end = lineIndex + 1 < starts.length ? starts[lineIndex + 1] - 1 : source.length;
+    return source.slice(start, end);
+}
+
+function renderModelRanges(line, changeBounds, rangeOffset, rangeCount, detailMode) {
+    if (detailMode === 'whole-line') {
+        return `<span class="diff-mismatch">${renderWithInvisibles(line, true)}</span>`;
+    }
+
+    let html = '';
+    let sourceOffset = 0;
+    for (let i = 0; i < rangeCount; i++) {
+        const offset = rangeOffset + (i * 2);
+        const start = changeBounds[offset];
+        const end = changeBounds[offset + 1];
+        if (start > sourceOffset) {
+            html += `<span class="diff-match">${renderWithInvisibles(line.slice(sourceOffset, start), false)}</span>`;
+        }
+        if (end > start) {
+            html += `<span class="diff-mismatch">${renderWithInvisibles(line.slice(start, end), true)}</span>`;
+        }
+        sourceOffset = end;
+    }
+
+    if (sourceOffset < line.length) {
+        html += `<span class="diff-match">${renderWithInvisibles(line.slice(sourceOffset), false)}</span>`;
+    }
+    return html;
+}
+
+function getModelPanelLineNumberAt(model, side, startIdx) {
+    let lineNum = 1;
+    const isRight = side === 'right';
+    for (let i = 0; i < startIdx && i < model.rows.length; i++) {
+        if (itemConsumesLineNumber(model.rows[i], isRight)) lineNum++;
+    }
+    return lineNum;
+}
+
+function renderModelPanelEntry(model, sources, row, side, lineNum) {
+    const isRight = side === 'right';
+
+    if (row.type === 'match') {
+        const lineIndex = isRight ? row.rightLineIndex : row.leftLineIndex;
+        const line = getModelSourceLine(model, sources, side, lineIndex);
+        return {
+            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (row.type === 'modified') {
+        const lineIndex = isRight ? row.rightLineIndex : row.leftLineIndex;
+        const rangeOffset = isRight ? row.rightRangeOffset : row.leftRangeOffset;
+        const rangeCount = isRight ? row.rightRangeCount : row.leftRangeCount;
+        const line = getModelSourceLine(model, sources, side, lineIndex);
+        return {
+            html: `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderModelRanges(line, model.changeBounds, rangeOffset, rangeCount, row.detailMode)}</span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (row.type === 'added') {
+        if (!isRight) {
+            return {
+                html: '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
+                lineNum: lineNum
+            };
+        }
+
+        const addedLine = getModelSourceLine(model, sources, 'right', row.rightLineIndex);
+        return {
+            html: `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`,
+            lineNum: lineNum + 1
+        };
+    }
+
+    if (isRight) {
+        return {
+            html: '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
+            lineNum: lineNum
+        };
+    }
+
+    const missingLine = getModelSourceLine(model, sources, 'left', row.leftLineIndex);
+    return {
+        html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`,
+        lineNum: lineNum + 1
+    };
+}
+
+function validateModelSources(model, sources) {
+    if (!model || model.version !== 2 || !sources
+        || typeof sources.left !== 'string' || typeof sources.right !== 'string') {
+        throw new TypeError('DiffModelV2 rendering requires the original left and right source strings.');
+    }
+}
+
+function buildPanelHtmlRangeFromModel(model, sources, side, startIdx, endIdx) {
+    validateModelSources(model, sources);
+    const safeStart = Math.max(0, Math.min(startIdx, model.rows.length));
+    const safeEnd = Math.max(safeStart, Math.min(endIdx, model.rows.length));
+    let lineNum = getModelPanelLineNumberAt(model, side, safeStart);
+    let html = '';
+
+    for (let i = safeStart; i < safeEnd; i++) {
+        const rendered = renderModelPanelEntry(model, sources, model.rows[i], side, lineNum);
+        html += rendered.html;
+        lineNum = rendered.lineNum;
+    }
+    return { html: html, endIdx: safeEnd };
+}
+
+function buildPanelHtmlFromModel(model, sources, side) {
+    return buildPanelHtmlRangeFromModel(model, sources, side, 0, model.rows.length).html;
 }
