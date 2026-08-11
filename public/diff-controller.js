@@ -183,7 +183,6 @@
             };
 
             if (outcome.state === 'completed') {
-                if (outcome.legacy) meta.legacy = true;
                 onResult(outcome.model, meta);
             } else if (outcome.state === 'failed') {
                 onError({
@@ -241,32 +240,6 @@
 
             if (message.type === 'diff:error') {
                 failJob(job, message.code || 'COMPARISON_FAILED', message.message || 'Comparison failed.');
-                return;
-            }
-
-            // Transitional support for tagged phase-one worker messages. Untagged
-            // legacy messages are deliberately rejected by messageBelongsToJob().
-            if (message.type === 'computing') {
-                if (markStarted(job)) {
-                    onProgress(message, {
-                        jobId: job.jobId,
-                        inputRevision: job.inputRevision,
-                        legacy: true
-                    });
-                }
-            } else if (message.type === 'chunk' || message.type === 'diff:chunk') {
-                if (job.state !== 'computing') return;
-                onProgress(message, {
-                    jobId: job.jobId,
-                    inputRevision: job.inputRevision,
-                    legacy: true
-                });
-            } else if (message.type === 'done') {
-                finishJob(job, { state: 'completed', model: message, legacy: true });
-            } else if (message.type === 'error') {
-                failJob(job, message.code || 'COMPARISON_FAILED', message.message || 'Comparison failed.');
-            } else if (message.type === 'cancelled') {
-                finishJob(job, { state: 'cancelled', reason: 'worker-cancelled' });
             }
         }
 

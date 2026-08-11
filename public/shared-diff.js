@@ -2,67 +2,6 @@
 // Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
-const INVISIBLE_RENDER_META = {
-    0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)' },
-    0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)' },
-    0x180E: { cls: 'invisible-mvs', title: 'Mongolian vowel separator (U+180E)' },
-    0x2002: { cls: 'invisible-ensp', title: 'En space (U+2002)' },
-    0x2003: { cls: 'invisible-emsp', title: 'Em space (U+2003)' },
-    0x2007: { cls: 'invisible-figure', title: 'Figure space (U+2007)' },
-    0x2008: { cls: 'invisible-punct', title: 'Punctuation space (U+2008)' },
-    0x2009: { cls: 'invisible-thin', title: 'Thin space (U+2009)' },
-    0x200A: { cls: 'invisible-hair', title: 'Hair space (U+200A)' },
-    0x200B: { cls: 'invisible-zwsp', title: 'Zero-width space (U+200B)' },
-    0x200C: { cls: 'invisible-zwnj', title: 'Zero-width non-joiner (U+200C)' },
-    0x200D: { cls: 'invisible-zwj', title: 'Zero-width joiner (U+200D)' },
-    0x200E: { cls: 'invisible-lrm', title: 'Left-to-right mark (U+200E)' },
-    0x200F: { cls: 'invisible-rlm', title: 'Right-to-left mark (U+200F)' },
-    0x202F: { cls: 'invisible-nnbsp', title: 'Narrow no-break space (U+202F)' },
-    0x205F: { cls: 'invisible-mmsp', title: 'Medium mathematical space (U+205F)' },
-    0x2060: { cls: 'invisible-wj', title: 'Word joiner (U+2060)' },
-    0x3000: { cls: 'invisible-ideo', title: 'Ideographic space (U+3000)' },
-    0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)' }
-};
-
-const CONFUSABLE_RENDER_META = {
-    0x0391: { cls: 'confusable-greek-alpha-cap', title: 'Greek capital alpha (U+0391), looks like Latin A' },
-    0x0392: { cls: 'confusable-greek-beta-cap', title: 'Greek capital beta (U+0392), looks like Latin B' },
-    0x0395: { cls: 'confusable-greek-epsilon-cap', title: 'Greek capital epsilon (U+0395), looks like Latin E' },
-    0x0396: { cls: 'confusable-greek-zeta-cap', title: 'Greek capital zeta (U+0396), looks like Latin Z' },
-    0x0397: { cls: 'confusable-greek-eta-cap', title: 'Greek capital eta (U+0397), looks like Latin H' },
-    0x0399: { cls: 'confusable-greek-iota-cap', title: 'Greek capital iota (U+0399), looks like Latin I' },
-    0x039A: { cls: 'confusable-greek-kappa-cap', title: 'Greek capital kappa (U+039A), looks like Latin K' },
-    0x039C: { cls: 'confusable-greek-mu-cap', title: 'Greek capital mu (U+039C), looks like Latin M' },
-    0x039D: { cls: 'confusable-greek-nu-cap', title: 'Greek capital nu (U+039D), looks like Latin N' },
-    0x039F: { cls: 'confusable-greek-omicron-cap', title: 'Greek capital omicron (U+039F), looks like Latin O' },
-    0x03A1: { cls: 'confusable-greek-rho-cap', title: 'Greek capital rho (U+03A1), looks like Latin P' },
-    0x03A4: { cls: 'confusable-greek-tau-cap', title: 'Greek capital tau (U+03A4), looks like Latin T' },
-    0x03A7: { cls: 'confusable-greek-chi-cap', title: 'Greek capital chi (U+03A7), looks like Latin X' },
-    0x03BF: { cls: 'confusable-greek-omicron', title: 'Greek small omicron (U+03BF), looks like Latin o' },
-    0x03C1: { cls: 'confusable-greek-rho', title: 'Greek small rho (U+03C1), looks like Latin p' },
-    0x03C7: { cls: 'confusable-greek-chi', title: 'Greek small chi (U+03C7), looks like Latin x' },
-    0x0406: { cls: 'confusable-cyrillic-i-cap', title: 'Cyrillic capital byelorussian-ukrainian i (U+0406), looks like Latin I' },
-    0x0410: { cls: 'confusable-cyrillic-a-cap', title: 'Cyrillic capital a (U+0410), looks like Latin A' },
-    0x0412: { cls: 'confusable-cyrillic-ve-cap', title: 'Cyrillic capital ve (U+0412), looks like Latin B' },
-    0x0415: { cls: 'confusable-cyrillic-ie-cap', title: 'Cyrillic capital ie (U+0415), looks like Latin E' },
-    0x041A: { cls: 'confusable-cyrillic-ka-cap', title: 'Cyrillic capital ka (U+041A), looks like Latin K' },
-    0x041C: { cls: 'confusable-cyrillic-em-cap', title: 'Cyrillic capital em (U+041C), looks like Latin M' },
-    0x041D: { cls: 'confusable-cyrillic-en-cap', title: 'Cyrillic capital en (U+041D), looks like Latin H' },
-    0x041E: { cls: 'confusable-cyrillic-o-cap', title: 'Cyrillic capital o (U+041E), looks like Latin O' },
-    0x0420: { cls: 'confusable-cyrillic-er-cap', title: 'Cyrillic capital er (U+0420), looks like Latin P' },
-    0x0421: { cls: 'confusable-cyrillic-es-cap', title: 'Cyrillic capital es (U+0421), looks like Latin C' },
-    0x0422: { cls: 'confusable-cyrillic-te-cap', title: 'Cyrillic capital te (U+0422), looks like Latin T' },
-    0x0425: { cls: 'confusable-cyrillic-ha-cap', title: 'Cyrillic capital ha (U+0425), looks like Latin X' },
-    0x0430: { cls: 'confusable-cyrillic-a', title: 'Cyrillic small a (U+0430), looks like Latin a' },
-    0x0435: { cls: 'confusable-cyrillic-ie', title: 'Cyrillic small ie (U+0435), looks like Latin e' },
-    0x043E: { cls: 'confusable-cyrillic-o', title: 'Cyrillic small o (U+043E), looks like Latin o' },
-    0x0440: { cls: 'confusable-cyrillic-er', title: 'Cyrillic small er (U+0440), looks like Latin p' },
-    0x0441: { cls: 'confusable-cyrillic-es', title: 'Cyrillic small es (U+0441), looks like Latin c' },
-    0x0445: { cls: 'confusable-cyrillic-ha', title: 'Cyrillic small ha (U+0445), looks like Latin x' },
-    0x0456: { cls: 'confusable-cyrillic-i', title: 'Cyrillic small byelorussian-ukrainian i (U+0456), looks like Latin i' },
-    0x04CF: { cls: 'confusable-cyrillic-palochka', title: 'Cyrillic small palochka (U+04CF), looks like Latin l' }
-};
-
 const CONFUSABLE_BASE_CHARS = {
     0x0391: 'A', 0x0392: 'B', 0x0395: 'E', 0x0396: 'Z',
     0x0397: 'H', 0x0399: 'I', 0x039A: 'K', 0x039C: 'M',
@@ -93,7 +32,7 @@ function isInvisibleCode(code) {
 }
 
 function isConfusableCode(code) {
-    return !!CONFUSABLE_RENDER_META[code];
+    return !!CONFUSABLE_BASE_CHARS[code];
 }
 
 function hasConfusableCharacters(text) {
@@ -134,44 +73,6 @@ function stripInvisibleCharacters(text) {
         result += char;
     }
     return result;
-}
-
-function renderInvisibleSpan(code, cls, title) {
-    return `<span data-char="&#x${code.toString(16)};" class="invisible-char ${cls}" title="${title}"></span>`;
-}
-
-function renderConfusableSpan(char, code, cls, title) {
-    return `<span data-char="&#x${code.toString(16)};" class="confusable-char ${cls}" title="${escapeAttribute(title)}">${escapeHtml(char)}</span>`;
-}
-
-function renderWithInvisibles(text, isMismatch) {
-    let result = '';
-    for (const char of text) {
-        const code = char.codePointAt(0);
-        const meta = INVISIBLE_RENDER_META[code];
-        const confusableMeta = CONFUSABLE_RENDER_META[code];
-
-        if (code === 0x0020 && isMismatch) {
-            result += renderInvisibleSpan(code, 'invisible-regular-space', 'Space (U+0020)');
-        } else if (meta) {
-            result += renderInvisibleSpan(code, meta.cls, meta.title);
-        } else if (code >= 0x2000 && code <= 0x200A) {
-            result += renderInvisibleSpan(code, 'invisible-space', `Unicode space (U+${code.toString(16).toUpperCase()})`);
-        } else if (confusableMeta) {
-            result += renderConfusableSpan(char, code, confusableMeta.cls, confusableMeta.title);
-        } else {
-            result += escapeHtml(char);
-        }
-    }
-    return result;
-}
-
-function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttribute(s) {
-    return escapeHtml(s).replace(/"/g, '&quot;');
 }
 
 const DIFF_LIMITS = {
@@ -438,14 +339,6 @@ function splitDiffUnits(text) {
         units: units,
         boundaries: Uint32Array.from(boundaries)
     };
-}
-
-function buildUnitArray(units, matched) {
-    const result = [];
-    for (let i = 0; i < units.length; i++) {
-        result.push({ c: units[i], match: matched.has(i) });
-    }
-    return result;
 }
 
 function buildVisualSkeletonUnits(units) {
@@ -982,35 +875,6 @@ function computeMyersRanges(left, right, options) {
     return mergeMyersRanges(output);
 }
 
-function computeCharDiff(left, right) {
-    const leftSplit = splitDiffUnits(left);
-    const rightSplit = splitDiffUnits(right);
-    const leftUnits = leftSplit.units;
-    const rightUnits = rightSplit.units;
-    const leftMatched = new Set();
-    const rightMatched = new Set();
-
-    const ranges = computeMyersRanges(leftUnits, rightUnits, {
-        maxEditDistance: DIFF_LIMITS.maxCharEditDistance
-    });
-    for (let i = 0; i < ranges.length; i++) {
-        const range = ranges[i];
-        if (range.type !== 'equal') continue;
-        const length = range.leftEnd - range.leftStart;
-        for (let j = 0; j < length; j++) {
-            leftMatched.add(range.leftStart + j);
-            rightMatched.add(range.rightStart + j);
-        }
-    }
-
-    return {
-        left: leftMatched,
-        right: rightMatched,
-        leftUnits: leftUnits,
-        rightUnits: rightUnits
-    };
-}
-
 function appendMergedChangeRange(bounds, start, end) {
     if (start === end) return;
 
@@ -1133,77 +997,6 @@ function boundedEditDistanceSimilarity(leftUnits, rightUnits) {
     return 1 - (prev[n] / maxLen);
 }
 
-function shortLineSimilarity(leftLine, rightLine) {
-    const leftUnits = splitDiffUnits(leftLine).units;
-    const rightUnits = splitDiffUnits(rightLine).units;
-    const maxUnits = Math.max(leftUnits.length, rightUnits.length);
-    if (maxUnits > SHORT_LINE_MAX_UNITS) return 0;
-
-    const directSimilarity = boundedEditDistanceSimilarity(leftUnits, rightUnits);
-    const visualSimilarity = boundedEditDistanceSimilarity(
-        buildVisualSkeletonUnits(leftUnits),
-        buildVisualSkeletonUnits(rightUnits)
-    );
-    return Math.max(directSimilarity, visualSimilarity);
-}
-
-function modifiedLineScore(leftLine, rightLine) {
-    const similarity = lineSimilarity(leftLine, rightLine);
-    const shortSimilarity = shortLineSimilarity(leftLine, rightLine);
-    return Math.max(similarity, shortSimilarity);
-}
-
-function isModifiedLineCandidate(leftLine, rightLine, score) {
-    if (score >= MODIFIED_SIMILARITY_THRESHOLD) return true;
-
-    const leftUnits = splitDiffUnits(leftLine).units;
-    const rightUnits = splitDiffUnits(rightLine).units;
-    const maxUnits = Math.max(leftUnits.length, rightUnits.length);
-    if (maxUnits > SHORT_LINE_MAX_UNITS) return false;
-
-    return score >= SHORT_LINE_SIMILARITY_THRESHOLD;
-}
-
-function lineSimilarity(leftLine, rightLine) {
-    if (leftLine === rightLine) return 1;
-    if (!leftLine.length || !rightLine.length) return 0;
-
-    const leftLen = leftLine.length;
-    const rightLen = rightLine.length;
-    const maxLen = Math.max(leftLen, rightLen);
-    const minLen = Math.min(leftLen, rightLen);
-    const lengthRatio = minLen / maxLen;
-    if (lengthRatio < 0.4) return 0;
-
-    let prefix = 0;
-    while (prefix < minLen && leftLine[prefix] === rightLine[prefix]) prefix++;
-
-    let suffix = 0;
-    while (
-        suffix < minLen - prefix
-        && leftLine[leftLen - 1 - suffix] === rightLine[rightLen - 1 - suffix]
-    ) {
-        suffix++;
-    }
-
-    const edgeRatio = (prefix + suffix) / maxLen;
-    const leftBigrams = getBigrams(leftLine);
-    const rightBigrams = getBigrams(rightLine);
-    let intersection = 0;
-    for (let gram in leftBigrams.map) {
-        if (rightBigrams.map[gram]) {
-            const leftCount = leftBigrams.map[gram];
-            const rightCount = rightBigrams.map[gram];
-            intersection += leftCount < rightCount ? leftCount : rightCount;
-        }
-    }
-
-    const denominator = leftBigrams.total + rightBigrams.total;
-    const dice = denominator > 0 ? (2 * intersection) / denominator : 0;
-    const weighted = (dice * 0.65) + (edgeRatio * 0.35);
-    return weighted * (0.6 + 0.4 * lengthRatio);
-}
-
 function createLineProfile(text) {
     return {
         text: text,
@@ -1309,41 +1102,6 @@ function quantizedModifiedLineScore(leftLine, rightLine) {
         allowed: scoreQ >= thresholdQ,
         shortPair: shortPair
     };
-}
-
-function createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex) {
-    if (type === 'match') {
-        return {
-            type: 'match',
-            leftLineIndex: leftLineIndex,
-            rightLineIndex: rightLineIndex
-        };
-    }
-
-    if (type === 'modified') {
-        const charMatched = computeCharDiff(leftLines[leftLineIndex], rightLines[rightLineIndex]);
-        return {
-            type: 'modified',
-            leftLineIndex: leftLineIndex,
-            rightLineIndex: rightLineIndex,
-            leftChars: buildUnitArray(charMatched.leftUnits, charMatched.left),
-            chars: buildUnitArray(charMatched.rightUnits, charMatched.right)
-        };
-    }
-
-    if (type === 'missing') {
-        return { type: 'missing', lineIndex: leftLineIndex };
-    }
-
-    return { type: 'added', lineIndex: rightLineIndex };
-}
-
-function appendDiffRow(diff, leftLines, rightLines, type, leftLineIndex, rightLineIndex, createRow) {
-    if (createRow) {
-        diff.push(createRow(type, leftLineIndex, rightLineIndex));
-        return;
-    }
-    diff.push(createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex));
 }
 
 const ALIGNMENT_SCORE_BUDGET_ERROR_CODE = 'DIFF_ALIGNMENT_SCORE_BUDGET_EXCEEDED';
@@ -1913,39 +1671,27 @@ function computeAlignedRowActions(
     });
 }
 
-function appendAlignedActions(leftLines, rightLines, actions, diff, createRow) {
+function appendAlignedActions(actions, rows, createRow) {
     for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
         if (action.type === 'PAIR') {
-            appendDiffRow(
-                diff,
-                leftLines,
-                rightLines,
+            rows.push(createRow(
                 'modified',
                 action.leftIndex,
-                action.rightIndex,
-                createRow
-            );
+                action.rightIndex
+            ));
         } else if (action.type === 'MISSING') {
-            appendDiffRow(
-                diff,
-                leftLines,
-                rightLines,
+            rows.push(createRow(
                 'missing',
                 action.leftIndex,
-                null,
-                createRow
-            );
+                null
+            ));
         } else {
-            appendDiffRow(
-                diff,
-                leftLines,
-                rightLines,
+            rows.push(createRow(
                 'added',
                 null,
-                action.rightIndex,
-                createRow
-            );
+                action.rightIndex
+            ));
         }
     }
 }
@@ -1983,7 +1729,7 @@ function appendMyersRanges(
             pendingRightEnd,
             alignmentContext
         );
-        appendAlignedActions(leftLines, rightLines, actions, diff, createRow);
+        appendAlignedActions(actions, diff, createRow);
         pendingLeftStart = null;
         pendingLeftEnd = null;
         pendingRightStart = null;
@@ -1996,15 +1742,11 @@ function appendMyersRanges(
             flushPending();
             const length = range.leftEnd - range.leftStart;
             for (let j = 0; j < length; j++) {
-                appendDiffRow(
-                    diff,
-                    leftLines,
-                    rightLines,
+                diff.push(createRow(
                     'match',
                     range.leftStart + j,
-                    range.rightStart + j,
-                    createRow
-                );
+                    range.rightStart + j
+                ));
             }
         } else if (range.type === 'delete') {
             ensurePending(range.leftStart, range.rightStart);
@@ -2238,265 +1980,4 @@ function computeDiffModel(left, right, options) {
         mismatchCount: mismatchCount,
         stats: stats
     };
-}
-
-function computeLineDiff(left, right) {
-    const validated = validateDiffInput(left, right);
-    if (!validated.ok) {
-        throw new Error(validated.message);
-    }
-
-    const leftLines = validated.leftLines;
-    const rightLines = validated.rightLines;
-    const diff = [];
-    const ranges = computeMyersRanges(leftLines, rightLines, {
-        maxEditDistance: DIFF_LIMITS.maxLineEditDistance
-    });
-    const alignmentContext = createAlignmentContext(
-        leftLines,
-        rightLines,
-        createDiffWorkBudget(),
-        null,
-        null
-    );
-    appendMyersRanges(leftLines, rightLines, ranges, diff, null, alignmentContext);
-
-    return { leftLines: leftLines, rightLines: rightLines, diff: diff };
-}
-
-function countDifferenceRows(diffResult) {
-    if (diffResult && diffResult.version === 2) {
-        return diffResult.mismatchCount;
-    }
-
-    let count = 0;
-    for (let i = 0; i < diffResult.diff.length; i++) {
-        const type = diffResult.diff[i].type;
-        if (type === 'added' || type === 'missing' || type === 'modified') {
-            count++;
-        }
-    }
-    return count;
-}
-
-function itemConsumesLineNumber(item, isRight) {
-    return item.type === 'match' || item.type === 'modified'
-        || (item.type === 'added' && isRight) || (item.type === 'missing' && !isRight);
-}
-
-function getPanelLineNumberAt(diffResult, side, startIdx) {
-    let lineNum = 1;
-    const isRight = side === 'right';
-    for (let i = 0; i < startIdx && i < diffResult.diff.length; i++) {
-        if (itemConsumesLineNumber(diffResult.diff[i], isRight)) {
-            lineNum++;
-        }
-    }
-    return lineNum;
-}
-
-function renderMatchedUnits(units) {
-    let html = '';
-    let i = 0;
-    while (i < units.length) {
-        const match = units[i].match;
-        let segment = '';
-        while (i < units.length && units[i].match === match) {
-            segment += units[i].c;
-            i++;
-        }
-        html += `<span class="${match ? 'diff-match' : 'diff-mismatch'}">${renderWithInvisibles(segment, !match)}</span>`;
-    }
-    return html;
-}
-
-function renderPanelEntry(diffResult, item, side, lineNum) {
-    const isRight = side === 'right';
-
-    if (item.type === 'match') {
-        const line = isRight ? diffResult.rightLines[item.rightLineIndex] : diffResult.leftLines[item.leftLineIndex];
-        return {
-            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (item.type === 'modified') {
-        const units = isRight ? item.chars : item.leftChars;
-        return {
-            html: `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderMatchedUnits(units)}</span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (item.type === 'added') {
-        if (!isRight) {
-            return {
-                html: '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
-                lineNum: lineNum
-            };
-        }
-
-        const addedLine = diffResult.rightLines[item.lineIndex];
-        return {
-            html: `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (item.type === 'missing') {
-        if (isRight) {
-            return {
-                html: '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
-                lineNum: lineNum
-            };
-        }
-
-        const missingLine = diffResult.leftLines[item.lineIndex];
-        return {
-            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    return { html: '', lineNum: lineNum };
-}
-
-function buildPanelHtmlRange(diffResult, side, startIdx, endIdx) {
-    let html = '';
-    let lineNum = getPanelLineNumberAt(diffResult, side, startIdx);
-    const safeEnd = Math.min(endIdx, diffResult.diff.length);
-
-    for (let i = startIdx; i < safeEnd; i++) {
-        const rendered = renderPanelEntry(diffResult, diffResult.diff[i], side, lineNum);
-        html += rendered.html;
-        lineNum = rendered.lineNum;
-    }
-
-    return { html: html, endIdx: safeEnd };
-}
-
-function buildPanelHtml(diffResult, side) {
-    return buildPanelHtmlRange(diffResult, side, 0, diffResult.diff.length).html;
-}
-
-function getModelSourceLine(model, sources, side, lineIndex) {
-    const source = sources[side];
-    const starts = side === 'right' ? model.rightLineStarts : model.leftLineStarts;
-    const start = starts[lineIndex];
-    const end = lineIndex + 1 < starts.length ? starts[lineIndex + 1] - 1 : source.length;
-    return source.slice(start, end);
-}
-
-function renderModelRanges(line, changeBounds, rangeOffset, rangeCount, detailMode) {
-    if (detailMode === 'whole-line') {
-        return `<span class="diff-mismatch">${renderWithInvisibles(line, true)}</span>`;
-    }
-
-    let html = '';
-    let sourceOffset = 0;
-    for (let i = 0; i < rangeCount; i++) {
-        const offset = rangeOffset + (i * 2);
-        const start = changeBounds[offset];
-        const end = changeBounds[offset + 1];
-        if (start > sourceOffset) {
-            html += `<span class="diff-match">${renderWithInvisibles(line.slice(sourceOffset, start), false)}</span>`;
-        }
-        if (end > start) {
-            html += `<span class="diff-mismatch">${renderWithInvisibles(line.slice(start, end), true)}</span>`;
-        }
-        sourceOffset = end;
-    }
-
-    if (sourceOffset < line.length) {
-        html += `<span class="diff-match">${renderWithInvisibles(line.slice(sourceOffset), false)}</span>`;
-    }
-    return html;
-}
-
-function getModelPanelLineNumberAt(model, side, startIdx) {
-    let lineNum = 1;
-    const isRight = side === 'right';
-    for (let i = 0; i < startIdx && i < model.rows.length; i++) {
-        if (itemConsumesLineNumber(model.rows[i], isRight)) lineNum++;
-    }
-    return lineNum;
-}
-
-function renderModelPanelEntry(model, sources, row, side, lineNum) {
-    const isRight = side === 'right';
-
-    if (row.type === 'match') {
-        const lineIndex = isRight ? row.rightLineIndex : row.leftLineIndex;
-        const line = getModelSourceLine(model, sources, side, lineIndex);
-        return {
-            html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content${isRight ? ' diff-match' : ''}">${renderWithInvisibles(line)}</span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (row.type === 'modified') {
-        const lineIndex = isRight ? row.rightLineIndex : row.leftLineIndex;
-        const rangeOffset = isRight ? row.rightRangeOffset : row.leftRangeOffset;
-        const rangeCount = isRight ? row.rightRangeCount : row.leftRangeCount;
-        const line = getModelSourceLine(model, sources, side, lineIndex);
-        return {
-            html: `<div class="diff-line${isRight ? ' diff-line-mismatch' : ''}"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderModelRanges(line, model.changeBounds, rangeOffset, rangeCount, row.detailMode)}</span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (row.type === 'added') {
-        if (!isRight) {
-            return {
-                html: '<div class="diff-line"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
-                lineNum: lineNum
-            };
-        }
-
-        const addedLine = getModelSourceLine(model, sources, 'right', row.rightLineIndex);
-        return {
-            html: `<div class="diff-line diff-line-mismatch"><span class="diff-gutter">${lineNum}</span><span class="diff-content"><span class="diff-mismatch">${renderWithInvisibles(addedLine, true)}</span></span></div>`,
-            lineNum: lineNum + 1
-        };
-    }
-
-    if (isRight) {
-        return {
-            html: '<div class="diff-line diff-line-missing"><span class="diff-gutter"></span><span class="diff-content"></span></div>',
-            lineNum: lineNum
-        };
-    }
-
-    const missingLine = getModelSourceLine(model, sources, 'left', row.leftLineIndex);
-    return {
-        html: `<div class="diff-line"><span class="diff-gutter">${lineNum}</span><span class="diff-content">${renderWithInvisibles(missingLine)}</span></div>`,
-        lineNum: lineNum + 1
-    };
-}
-
-function validateModelSources(model, sources) {
-    if (!model || model.version !== 2 || !sources
-        || typeof sources.left !== 'string' || typeof sources.right !== 'string') {
-        throw new TypeError('DiffModelV2 rendering requires the original left and right source strings.');
-    }
-}
-
-function buildPanelHtmlRangeFromModel(model, sources, side, startIdx, endIdx) {
-    validateModelSources(model, sources);
-    const safeStart = Math.max(0, Math.min(startIdx, model.rows.length));
-    const safeEnd = Math.max(safeStart, Math.min(endIdx, model.rows.length));
-    let lineNum = getModelPanelLineNumberAt(model, side, safeStart);
-    let html = '';
-
-    for (let i = safeStart; i < safeEnd; i++) {
-        const rendered = renderModelPanelEntry(model, sources, model.rows[i], side, lineNum);
-        html += rendered.html;
-        lineNum = rendered.lineNum;
-    }
-    return { html: html, endIdx: safeEnd };
-}
-
-function buildPanelHtmlFromModel(model, sources, side) {
-    return buildPanelHtmlRangeFromModel(model, sources, side, 0, model.rows.length).html;
 }

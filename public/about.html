@@ -29,7 +29,7 @@
 
     <section>
       <p>diffvoid.com is a secure, private, browser-based text comparison tool. All processing happens locally in your
-        browser-your text never leaves your device.</p>
+        browser—your text never leaves your device.</p>
     </section>
 
     <section>
@@ -37,38 +37,59 @@
       <ul>
         <li><strong>Privacy first</strong>: No server uploads, no tracking, no analytics. Everything stays in your
           browser.</li>
-        <li><strong>Line-aware Myers diff</strong>: Uses a first-party Myers shortest edit script implementation so
-          inserted or removed lines do not shift the whole comparison.</li>
-        <li><strong>Character-level Myers diff</strong>: Within modified lines, shows exactly which graphemes differ.
-        </li>
+        <li><strong>Line-aware Myers diff</strong>: A first-party Myers implementation preserves exact matching-line
+          anchors when lines are inserted or removed.</li>
+        <li><strong>Bounded row alignment</strong>: Unmatched hunks use deterministic full or banded dynamic programming
+          to pair similar modified lines. If reliable pairing exceeds the shared work budget, the lines are
+          conservatively shown as missing and added.</li>
+        <li><strong>Character-level diff</strong>: Selected modified pairs are compared by grapheme and stored as compact
+          UTF-16 change ranges instead of permanent per-character objects.</li>
         <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other
           hidden Unicode characters that can cause subtle bugs.</li>
         <li><strong>Confusable character detection</strong>: Marks common Greek and Cyrillic homographs that look like
           Latin letters, with tooltips explaining the real Unicode character.</li>
-        <li><strong>Copy without invisible characters</strong>: When invisible characters are detected, copy buttons
-          appear to copy clean text. Zero-width characters are removed completely, while special spaces (NBSP, En/Em
-          space, etc.) are replaced with standard spaces to preserve word separation.</li>
+        <li><strong>Exact and clean copying</strong>: Copy L/R always copies the complete original source after a
+          comparison, including rows outside the visible window and trailing newlines. When invisible characters are
+          detected, Clean L/R also appears to normalize hidden spacing characters and remove soft hyphens and BOM
+          characters.</li>
         <li><strong>Adjustable panels</strong>: Drag the center divider to adjust left/right panel widths. Double-click
           to reset to 50/50.</li>
         <li><strong>Clear button</strong>: One-click to clear both panels and reset to default view.</li>
         <li><strong>Dark mode</strong>: Toggle between light and dark themes with preference saved locally.</li>
-        <li><strong>Web Worker processing</strong>: Comparison runs in a background thread to keep the UI responsive.
-        </li>
-        <li><strong>Chunked rendering</strong>: Large diffs render in batches to prevent browser freezing.</li>
+        <li><strong>Cost-based Web Worker processing</strong>: Comparisons normally run in a background worker. Only
+          input proven small enough may fall back to synchronous processing when a worker cannot be created.</li>
+        <li><strong>Virtualized rendering</strong>: Both panes mount only the same visible row window, with hard row and
+          DOM-node caps and rendering work split across animation frames.</li>
+        <li><strong>Long-line previews</strong>: Dense lines over 20,000 code units are shown as paged previews around
+          their changes while exact copying continues to use the complete source.</li>
       </ul>
     </section>
 
     <section>
       <h2>How It Works</h2>
-      <p>The tool aligns lines using a browser-side Myers shortest edit script implementation so matching blocks stay
-        aligned even when lines are inserted or removed in the middle.</p>
-      <p>Adjacent Myers delete/insert ranges are paired into modified rows when their content is similar, then a
-        grapheme-aware Myers character diff highlights exact changes within those rows.</p>
-      <p>Because comparison is fully browser-side, safe practical limits are 25,000 lines, 2,000,000 characters per
-        side, 100,000 characters per line, and a bounded Myers edit workload.</p>
-      <p>If an input is too large or too different to process safely, diffvoid shows a clear warning instead of starting
-        a comparison that could freeze the browser.</p>
-      <p>All computation happens client-side using JavaScript. There is no backend processing your text.</p>
+      <p>A lightweight scan first validates the input and estimates its cost. Accepted comparisons normally run in a
+        same-origin Web Worker. If worker creation is unavailable, only a comparison classified as safely small may
+        run synchronously; heavy input is stopped with an instruction to serve the app over HTTP or compare smaller
+        sections.</p>
+      <p>For that reason, opening the app from a <code>file://</code> URL is not recommended. If worker creation fails
+        immediately, only a safely small comparison may fall back to synchronous processing. Serve the
+        <code>public/</code> directory over HTTP for the complete comparison flow.</p>
+      <p>Myers line diff establishes exact anchors. Inside each unmatched hunk, a bounded dynamic-programming pass
+        selects similar modified-line pairs with deterministic tie-breaking. It uses a full matrix for small hunks and
+        a banded matrix for larger ones. If the remaining budget cannot support reliable alignment, no pair is guessed:
+        the hunk is shown as missing and added lines.</p>
+      <p>Only the final modified pairs receive a grapheme-aware character comparison. The result is an atomic,
+        source-free compact model containing row indexes, line-start arrays, and UTF-16 change ranges. The original
+        left and right texts remain the only source of truth in the page.</p>
+      <p>The result view has fixed-height, non-wrapping rows and creates DOM only for the visible window: at most 200
+        rows per pane and 8,000 nodes across both panes. Very dense long lines use a paged preview. If exact character
+        decoration must be simplified, diffvoid displays <strong>Detailed rendering reduced for performance</strong>;
+        this never changes the text returned by Copy L/R.</p>
+      <p>Safe practical limits are 25,000 lines, 2,000,000 characters per side, 100,000 characters per line, and shared
+        bounds for line diffing, alignment, character diffing, compact ranges, and rendering. Input outside those bounds
+        receives a clear warning instead of unbounded browser work.</p>
+      <p>All computation happens client-side using JavaScript. Compared text may pass between the page and its
+        in-browser Worker, but there is no backend processing and no network transmission of that text.</p>
     </section>
 
     <section>
@@ -98,14 +119,19 @@
       <h2>How to Read the Diff</h2>
       <ul>
         <li><strong>Matching lines</strong>: No background highlight - text is identical.</li>
-        <li><strong>Modified lines</strong>: Red background with red characters showing exact differences.</li>
-        <li><strong>Added lines</strong>: Red background - appears only on the right side.</li>
-        <li><strong>Missing lines</strong>: Red background - appears only on the left side.</li>
+        <li><strong>Modified lines</strong>: Red background with precise red character ranges when the detail budget
+          permits.</li>
+        <li><strong>Added or missing lines</strong>: The source line is highlighted on one side and aligned with a
+          highlighted empty gap on the other.</li>
         <li><strong>Difference counter</strong>: Counts changed visual rows: modified, added, and missing rows.</li>
         <li><strong>Invisible characters</strong>: Shown as symbols like <code>|</code>, <code>[ZWSP]</code>, or red
           boxes for spaces in diffs.</li>
         <li><strong>Confusable characters</strong>: Shown with a dotted underline, a small marker, and a tooltip that
           names the actual Unicode character.</li>
+        <li><strong>Reduced long-line preview</strong>: Previous/Next controls move between bounded views around changes;
+          preview ellipses are not part of the source text.</li>
+        <li><strong>Copy L/R</strong>: Copies the exact original side. <strong>Clean L/R</strong> appears when invisible
+          characters are detected and returns a normalized version instead.</li>
       </ul>
     </section>
 

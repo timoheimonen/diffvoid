@@ -9,17 +9,11 @@ function loadSharedDiff() {
     const context = { Intl };
     vm.createContext(context);
     vm.runInContext(code + `
-this.computeLineDiff = computeLineDiff;
-this.buildPanelHtml = buildPanelHtml;
-this.buildPanelHtmlRange = buildPanelHtmlRange;
-this.countDifferenceRows = countDifferenceRows;
 this.hasInvisibleCharacters = hasInvisibleCharacters;
 this.hasConfusableCharacters = hasConfusableCharacters;
 this.stripInvisibleCharacters = stripInvisibleCharacters;
 this.validateDiffInput = validateDiffInput;
-this.lineSimilarity = lineSimilarity;
 this.computeMyersRanges = computeMyersRanges;
-this.renderWithInvisibles = renderWithInvisibles;
 this.scanDiffInput = typeof scanDiffInput === 'function' ? scanDiffInput : undefined;
 this.classifyDiffWork = typeof classifyDiffWork === 'function' ? classifyDiffWork : undefined;
 this.computeDiffModel = typeof computeDiffModel === 'function' ? computeDiffModel : undefined;
@@ -35,12 +29,6 @@ this.DIFF_MODEL_LIMITS = typeof DIFF_MODEL_LIMITS === 'object' ? DIFF_MODEL_LIMI
 this.SYNC_DIFF_LIMITS = typeof SYNC_DIFF_LIMITS === 'object' ? SYNC_DIFF_LIMITS : undefined;
 this.validateScannedDiffInput = typeof validateScannedDiffInput === 'function'
     ? validateScannedDiffInput
-    : undefined;
-this.buildPanelHtmlFromModel = typeof buildPanelHtmlFromModel === 'function'
-    ? buildPanelHtmlFromModel
-    : undefined;
-this.buildPanelHtmlRangeFromModel = typeof buildPanelHtmlRangeFromModel === 'function'
-    ? buildPanelHtmlRangeFromModel
     : undefined;
 this.DIFF_DEADLINE_ERROR_CODE = typeof DIFF_DEADLINE_ERROR_CODE === 'string'
     ? DIFF_DEADLINE_ERROR_CODE
@@ -81,27 +69,7 @@ this.ALIGNMENT_CONSTANTS = {
 const diff = loadSharedDiff();
 
 function types(left, right) {
-    return Array.from(diff.computeLineDiff(left, right).diff, function (item) { return item.type; });
-}
-
-function reconstructed(result) {
-    const left = [];
-    const right = [];
-    for (const item of result.diff) {
-        if (item.type === 'match') {
-            left.push(result.leftLines[item.leftLineIndex]);
-            right.push(result.rightLines[item.rightLineIndex]);
-        } else if (item.type === 'modified') {
-            left.push(result.leftLines[item.leftLineIndex]);
-            right.push(result.rightLines[item.rightLineIndex]);
-        } else if (item.type === 'missing') {
-            left.push(result.leftLines[item.lineIndex]);
-        } else if (item.type === 'added') {
-            right.push(result.rightLines[item.lineIndex]);
-        }
-    }
-
-    return { left: left.join('\n'), right: right.join('\n') };
+    return Array.from(diff.computeDiffModel(left, right).rows, function (row) { return row.type; });
 }
 
 function modelLine(source, starts, lineIndex) {
@@ -361,7 +329,7 @@ function assertModelAlignmentInvariants(model, left, right) {
     return pairCount;
 }
 
-test('line diff handles equal, added, missing, and modified rows', function () {
+test('DiffModelV2 handles equal, added, missing, and modified rows', function () {
     assert.deepEqual(types('a\nb\nc', 'a\nb\nc'), ['match', 'match', 'match']);
     assert.deepEqual(types('a\nc', 'a\nb\nc'), ['match', 'added', 'match']);
     assert.deepEqual(types('a\nb\nc', 'a\nc'), ['match', 'missing', 'match']);
@@ -454,7 +422,7 @@ test('trailing newlines and blank lines are preserved', function () {
     assert.deepEqual(types('a\n\nc', 'a\n\nc'), ['match', 'match', 'match']);
 });
 
-test('diff entries can reconstruct both original inputs', function () {
+test('DiffModelV2 rows can reconstruct both original inputs', function () {
     const cases = [
         ['a\nb\nc', 'a\nb\nc'],
         ['a\nc', 'a\nb\nc'],
@@ -464,19 +432,21 @@ test('diff entries can reconstruct both original inputs', function () {
     ];
 
     for (const [left, right] of cases) {
-        assert.deepEqual(reconstructed(diff.computeLineDiff(left, right)), { left, right });
+        const model = diff.computeDiffModel(left, right);
+        assert.deepEqual(reconstructedFromModel(model, left, right), { left: left, right: right });
     }
 });
 
-test('grapheme diff keeps emoji and combining-mark edits as single units', function () {
-    const emoji = diff.computeLineDiff('hi 😀', 'hi 😃').diff[0];
-    assert.equal(emoji.type, 'modified');
-    assert.equal(emoji.leftChars.at(-1).c, '😀');
-    assert.equal(emoji.chars.at(-1).c, '😃');
+test('compact ranges keep emoji and combining-mark edits as single graphemes', function () {
+    const emoji = diff.computeDiffModel('hi 😀', 'hi 😃');
+    assert.equal(emoji.rows[0].type, 'modified');
+    assert.equal(emoji.rows[0].detailMode, 'precise');
+    assert.deepEqual(Array.from(emoji.changeBounds), [3, 5, 3, 5]);
 
-    const combining = diff.computeLineDiff('Cafe\u0301', 'Cafe').diff[0];
-    assert.equal(combining.type, 'modified');
-    assert.equal(combining.leftChars.at(-1).c, 'e\u0301');
+    const combining = diff.computeDiffModel('Cafe\u0301', 'Cafe');
+    assert.equal(combining.rows[0].type, 'modified');
+    assert.equal(combining.rows[0].detailMode, 'precise');
+    assert.deepEqual(Array.from(combining.changeBounds), [3, 5, 3, 4]);
 });
 
 test('invisible character detection and clean copy normalization work', function () {
@@ -484,24 +454,14 @@ test('invisible character detection and clean copy normalization work', function
     assert.equal(diff.stripInvisibleCharacters('a\u200Bb\u00A0c\uFEFF'), 'a b c');
 });
 
-test('confusable characters are detected and rendered with explanatory tooltips', function () {
+test('confusable characters are detected for routing and visual-skeleton matching', function () {
     assert.equal(diff.hasConfusableCharacters('Latin A'), false);
     assert.equal(diff.hasConfusableCharacters('Cyrillic \u0410'), true);
 
-    const html = diff.renderWithInvisibles('A\u0410\u03BF', true);
-    assert.match(html, /class="confusable-char confusable-cyrillic-a-cap"/);
-    assert.match(html, /title="Cyrillic capital a \(U\+0410\), looks like Latin A"/);
-    assert.match(html, /class="confusable-char confusable-greek-omicron"/);
-    assert.match(html, /data-char="&#x410;"/);
-});
-
-test('confusable diffs explain visually similar changed characters', function () {
-    const result = diff.computeLineDiff('A', '\u0410');
-    assert.equal(result.diff[0].type, 'modified');
-
-    const rightHtml = diff.buildPanelHtml(result, 'right');
-    assert.match(rightHtml, /confusable-char/);
-    assert.match(rightHtml, /looks like Latin A/);
+    const model = diff.computeDiffModel('A', '\u0410');
+    assert.equal(model.rows[0].type, 'modified');
+    assert.equal(model.rows[0].detailMode, 'precise');
+    assert.deepEqual(Array.from(model.changeBounds), [0, 1, 0, 1]);
 });
 
 test('input validation rejects excessive character, line, and line-length inputs', function () {
@@ -518,22 +478,9 @@ test('input validation rejects excessive character, line, and line-length inputs
     );
 });
 
-test('chunked panel rendering matches full panel rendering', function () {
-    const result = diff.computeLineDiff('a\nb\nc\nd', 'a\nb!\nc\nx\nd');
-    const leftFull = diff.buildPanelHtml(result, 'left');
-    const rightFull = diff.buildPanelHtml(result, 'right');
-    const leftChunked = diff.buildPanelHtmlRange(result, 'left', 0, 2).html
-        + diff.buildPanelHtmlRange(result, 'left', 2, result.diff.length).html;
-    const rightChunked = diff.buildPanelHtmlRange(result, 'right', 0, 2).html
-        + diff.buildPanelHtmlRange(result, 'right', 2, result.diff.length).html;
-
-    assert.equal(leftChunked, leftFull);
-    assert.equal(rightChunked, rightFull);
-});
-
-test('difference row count uses the shared semantic counter', function () {
-    const result = diff.computeLineDiff('a\nb\nc', 'a\nb!\nx\nc');
-    assert.equal(diff.countDifferenceRows(result), 2);
+test('DiffModelV2 exposes the semantic difference-row count', function () {
+    const model = diff.computeDiffModel('a\nb\nc', 'a\nb!\nx\nc');
+    assert.equal(model.mismatchCount, 2);
 });
 
 test('compact v2 ranges preserve grapheme boundaries and reconstruct both sources', function () {
@@ -728,17 +675,6 @@ test('DiffWorkBudget and model range limits use atomic whole-line fallback', fun
     assert.equal(charBudget.remainingCharEditDistance, 0);
 });
 
-test('legacy diff and HTML APIs remain compatible beside DiffModelV2', function () {
-    const legacy = diff.computeLineDiff('a\nCafe\u0301', 'a\nCafe');
-    assert.deepEqual(Array.from(legacy.diff, function (row) { return row.type; }), ['match', 'modified']);
-    assert.equal(legacy.diff[1].leftChars.at(-1).c, 'e\u0301');
-    assert.match(diff.buildPanelHtml(legacy, 'left'), /diff-mismatch/);
-    assert.equal(diff.countDifferenceRows(legacy), 1);
-
-    const model = diff.computeDiffModel('a\nCafe\u0301', 'a\nCafe');
-    assert.equal(diff.countDifferenceRows(model), 1);
-});
-
 test('linear input scan and sync classification expose the centralized routing contract', function () {
     const left = 'a b\n\u200B\u0410';
     const right = 'x\u00A0';
@@ -918,50 +854,13 @@ test('alignment layout planning and DP propagate deadline failures terminally', 
     );
 });
 
-test('source-aware V2 HTML adapter matches legacy output without persisting sources or HTML', function () {
-    const left = 'same\nCafe\u0301\nleft only\nA\u200B\nend';
-    const right = 'same\nCafe\nright only\n\u0410\nextra\nend';
-    const sources = { left: left, right: right };
-    const legacy = diff.computeLineDiff(left, right);
-    const model = diff.computeDiffModel(left, right);
-
-    for (const side of ['left', 'right']) {
-        const expected = diff.buildPanelHtml(legacy, side);
-        const actual = diff.buildPanelHtmlFromModel(model, sources, side);
-        assert.equal(actual, expected);
-
-        const splitAt = Math.min(3, model.rows.length);
-        const chunked = diff.buildPanelHtmlRangeFromModel(model, sources, side, 0, splitAt).html
-            + diff.buildPanelHtmlRangeFromModel(model, sources, side, splitAt, model.rows.length).html;
-        assert.equal(chunked, expected);
-    }
-
-    assertNoLegacyModelKeys(model);
-    assert.throws(
-        function () { diff.buildPanelHtmlFromModel(model, null, 'left'); },
-        /requires the original left and right source strings/
-    );
-});
-
-test('V2 HTML adapter escapes untrusted source text', function () {
-    const attack = '<img src=x onerror="alert(1)">&<script>alert(2)</script>\u200B';
-    const model = diff.computeDiffModel(attack, attack);
-    const html = diff.buildPanelHtmlFromModel(model, { left: attack, right: attack }, 'left');
-
-    assert.doesNotMatch(html, /<img\b/i);
-    assert.doesNotMatch(html, /<script\b/i);
-    assert.match(html, /&lt;img src=x onerror="alert\(1\)"&gt;/);
-    assert.match(html, /&amp;/);
-    assert.match(html, /invisible-zwsp/);
-    assertNoLegacyModelKeys(model);
-});
-
 test('bounded row alignment finds both globally compatible modified pairs', function () {
-    const result = diff.computeLineDiff('abc1\nabc1y', 'abc2\nabc1x');
-    assert.deepEqual(Array.from(result.diff, function (row) { return row.type; }), ['modified', 'modified']);
+    const model = diff.computeDiffModel('abc1\nabc1y', 'abc2\nabc1x');
+    assert.deepEqual(Array.from(model.rows, function (row) { return row.type; }), ['modified', 'modified']);
+    assert.equal(model.mismatchCount, 2);
 });
 
-test('bounded alignment preserves the pre-DP presentation golden corpus', function () {
+test('DiffModelV2 alignment preserves the hardcoded presentation golden corpus', function () {
     const corpus = [
         {
             left: 'a\nb',

@@ -487,22 +487,49 @@ test('only the first terminal outcome can invoke a callback', function () {
     assert.equal(harness.states.filter(function (entry) { return entry.state === 'completed'; }).length, 1);
 });
 
-test('tagged transitional computing, chunk, and done messages remain supported', function () {
-    const harness = createHarness();
-    const token = harness.controller.start({ left: 'a', right: 'b', isSyncSafe: false });
-    const worker = FakeWorker.instances[0];
+test('all tagged legacy worker envelopes are ignored before a valid v2 result completes', function () {
+    const legacyMessageFactories = [
+        function (token) { return tagged('computing', token); },
+        function (token) {
+            return tagged('chunk', token, { leftHtml: '<div>a</div>', rightHtml: '<div>b</div>' });
+        },
+        function (token) {
+            return tagged('diff:chunk', token, { leftHtml: '<div>a2</div>', rightHtml: '<div>b2</div>' });
+        },
+        function (token) { return tagged('done', token, { mismatchCount: 1 }); },
+        function (token) {
+            return tagged('error', token, { code: 'LEGACY_ERROR', message: 'legacy failure' });
+        },
+        function (token) { return tagged('cancelled', token); }
+    ];
 
-    worker.emit(tagged('computing', token));
-    worker.emit(tagged('chunk', token, { leftHtml: '<div>a</div>', rightHtml: '<div>b</div>' }));
-    worker.emit(tagged('done', token, { mismatchCount: 1 }));
+    for (const createLegacyMessage of legacyMessageFactories) {
+        const harness = createHarness();
+        const token = harness.controller.start({ left: 'a', right: 'b', isSyncSafe: false });
+        const worker = FakeWorker.instances[0];
+        worker.emit(tagged('diff:started', token));
+        worker.emit(createLegacyMessage(token));
 
-    assert.equal(harness.progress.length, 2);
-    assert.equal(harness.progress[0].meta.legacy, true);
-    assert.equal(harness.progress[1].message.type, 'chunk');
-    assert.equal(harness.results.length, 1);
-    assert.equal(harness.results[0].model.mismatchCount, 1);
-    assert.equal(harness.results[0].meta.legacy, true);
-    assert.equal(worker.terminated, true);
+        assert.equal(harness.controller.getState().activeJob.state, 'computing');
+        assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), ['starting', 'computing']);
+        assert.equal(harness.progress.length, 0);
+        assert.equal(harness.results.length, 0);
+        assert.equal(harness.errors.length, 0);
+        assert.equal(worker.terminated, false);
+        assert.equal(harness.clock.pendingCount(), 1);
+
+        const model = { version: 2, mismatchCount: 1 };
+        worker.emit(tagged('diff:result', token, { model: model }));
+
+        assert.equal(harness.results.length, 1);
+        assert.equal(harness.results[0].model, model);
+        assert.equal(Object.prototype.hasOwnProperty.call(harness.results[0].meta, 'legacy'), false);
+        assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), [
+            'starting', 'computing', 'completed'
+        ]);
+        assert.equal(worker.terminated, true);
+        assert.equal(harness.clock.pendingCount(), 0);
+    }
 });
 
 test('destroy terminates active work, removes visibility listener, and prevents reuse', function () {

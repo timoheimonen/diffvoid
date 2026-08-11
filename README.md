@@ -1,43 +1,40 @@
 # diffvoid.com
 
-A secure, browser-based text comparison tool. Compare two texts side-by-side to see differences instantly. All processing happens locally in your browser — your text never leaves your device.
+A secure, browser-based text comparison tool. Compare two texts side by side and inspect exact differences without uploading either text. All comparison work stays inside your browser.
 
 **Live:** [diffvoid.com](https://diffvoid.com)
 
 ## Features
 
-- **100% Client-Side**: All text comparison happens in your browser. No data is sent to any server.
-- **Line-Aware Myers Diff**: Aligns line sequences with a first-party Myers shortest edit script implementation so inserted or removed lines do not shift the entire comparison.
-- **Character-Level Myers Diff**: Highlights exact grapheme-level differences within modified lines using the same Myers core.
-- **Invisible Character Detection**: Automatically highlights invisible Unicode characters (zero-width spaces, non-breaking spaces, soft hyphens, directional marks, etc.) with visual indicators.
-- **Confusable Character Detection**: Marks common Greek and Cyrillic homographs that look like Latin letters, with tooltips explaining the actual Unicode character.
-- **Copy Without Invisible Characters**: When invisible characters are detected, copy buttons appear next to the comparison result. Zero-width characters are removed completely, while special spaces (NBSP, En/Em space, etc.) are replaced with standard spaces to preserve word separation.
-- **Adjustable Divider**: Drag the center divider to adjust the width of left and right panels. Double-click divider or click Clear to reset to 50/50.
-- **Dark/Light Mode**: Toggle between dark and light themes. Preference is saved locally.
-- **Web Worker Processing**: Comparison runs in a background Web Worker to keep the UI responsive. Falls back to synchronous processing if workers are unavailable.
-- **Chunked Rendering**: Large diffs are rendered in batches to prevent browser freezing.
-- **Input Limits**: Maximum 25,000 lines, 2,000,000 characters per side, 100,000 characters per line, and safe Myers edit-work limits enforced before comparison.
-- **Friendly Safety Warnings**: Inputs that are too large or too different for safe browser-side processing are rejected with a clear message instead of starting an unstable comparison.
-- **Privacy-First**: No ads, no analytics, no tracking. Open source and auditable.
+- **100% client-side**: Compared text is processed only by the page and its same-origin Web Worker. It is never sent to a server.
+- **Line-aware Myers diff**: A first-party Myers implementation preserves exact matching-line anchors when lines are inserted or removed.
+- **Bounded row alignment**: Unmatched hunks use deterministic full or banded dynamic programming to pair similar modified lines. If the shared work budget cannot support a reliable pairing, the hunk is conservatively shown as missing and added lines.
+- **Grapheme-aware character diff**: Modified lines are segmented into user-perceived characters when `Intl.Segmenter` is available, then stored as compact UTF-16 change ranges rather than per-character objects.
+- **Invisible character detection**: Zero-width spaces, non-breaking spaces, soft hyphens, directional marks, and other hidden Unicode characters receive visible markers.
+- **Confusable character detection**: Common Greek and Cyrillic homographs that resemble Latin letters receive a marker and an explanatory tooltip.
+- **Exact and clean copying**: Copy L/R returns the complete original source, including unmounted rows and trailing newlines. Clean L/R additionally normalizes detected invisible spacing characters and removes soft hyphens and BOM characters.
+- **Virtualized rendering**: Only the visible diff window is mounted. Rendering is capped at 200 rows per pane and 8,000 DOM nodes across both panes, and work is split across animation frames.
+- **Reduced long-line previews**: Dense lines over 20,000 code units are shown as paged previews around changes. Copying still uses the complete original source.
+- **Cost-based worker routing**: Comparisons normally run in a Web Worker. A synchronous fallback is allowed only for input proven small enough when a worker cannot be created; worker-required input is never retried on the main thread.
+- **Input and work limits**: Each side supports up to 25,000 lines, 2,000,000 characters, and 100,000 characters per line. Shared Myers, alignment, character-diff, range, and rendering budgets prevent unbounded work.
+- **Adjustable divider**: Drag the divider to resize the panels. Double-click it or select Clear to restore the 50/50 layout.
+- **Dark/light mode**: The selected theme is stored locally.
+- **Privacy-first**: No ads, analytics, cookies, tracking, or transmission of compared text.
 
 ## How to Use
 
-1. Paste text into the left panel
-2. Paste text into the right panel
-3. Differences are highlighted automatically:
-   - **Green background**: Matching text
-   - **Red background**: Different, added, or deleted text
-   - **Invisible characters**: Shown as `[ZWSP]`, `|`, `[NBSP]`, `[LRM]`, or red boxes for spaces in diffs
-   - **Confusable characters**: Underlined with a small marker and tooltip when a character looks like a Latin letter but is not one
-4. When invisible characters are detected, **copy buttons (L/R)** appear next to the mismatch counter:
-   - **Zero-width characters** (like `[ZWSP]`, `[LRM]`) are removed completely
-   - **Special spaces** (like `[NBSP]`, `[EM]`, `[EN]`) are replaced with standard spaces to prevent word merging
-5. Drag the center divider to adjust panel widths
-6. Click the trash icon to clear both panels
+1. Paste text into the left and right panels.
+2. The comparison starts automatically.
+3. Read the aligned result:
+   - **Matching lines** have no background highlight.
+   - **Modified, added, and missing content** is highlighted in red. A one-sided source line is aligned with a highlighted empty gap in the other pane.
+   - **Character highlights** identify precise changes inside paired modified lines.
+   - **Invisible characters** appear as markers such as `|`, `[ZWSP]`, `[NBSP]`, or `[LRM]`.
+   - **Confusable characters** have a dotted marker and tooltip naming the actual Unicode character.
+4. Use **Copy L/R** for the exact source text. When invisible characters are present, **Clean L/R** also appears; it turns detected hidden spacing characters into ordinary spaces, collapses adjacent normalized spaces, and removes soft hyphens and BOM characters.
+5. Drag the divider to resize the panes, or use Clear to reset the comparison.
 
 ## Invisible Characters Detected
-
-The tool highlights these commonly problematic invisible Unicode characters:
 
 | Code | Name | Display |
 |------|------|---------|
@@ -63,8 +60,7 @@ The tool highlights these commonly problematic invisible Unicode characters:
 
 ## Confusable Characters Detected
 
-Invisible characters are hidden or spacing-related code points. Confusable characters are visible letters from another
-script that can look identical to Latin letters. diffvoid marks common Greek and Cyrillic lookalikes such as:
+Invisible characters are hidden or spacing-related code points. Confusable characters are visible letters from another script that can resemble Latin letters. diffvoid marks common Greek and Cyrillic lookalikes such as:
 
 | Example | Name | Looks like |
 |---------|------|------------|
@@ -76,81 +72,86 @@ script that can look identical to Latin letters. diffvoid marks common Greek and
 
 ## Technical Details
 
-### Diff Algorithm
+### Comparison pipeline
 
-Uses a first-party Myers shortest edit script implementation:
-- **Line-level Myers diff**: Matching blocks stay aligned even when lines are inserted or deleted
-- **Modified-row presentation**: Adjacent Myers delete/insert ranges are paired into modified rows when their content is similar
-- **Short-line handling**: Compact edits such as `x=1` to `x=2` stay aligned as modified rows instead of add/remove pairs
-- **Character-level Myers diff**: For modified lines, detailed grapheme-aware character comparison shows exact differences
-- **Difference rows**: The counter reports changed visual diff rows, including modified, added, and missing rows
-- **No diff libraries**: The Myers algorithm is implemented directly in `public/shared-diff.js`
-- **Grapheme segmentation**: Uses `Intl.Segmenter` when available so emoji and combining-mark edits are not split into broken UTF-16 halves.
-- **Confusable rendering**: Common Greek and Cyrillic homographs are wrapped with explanatory tooltips while preserving the original character for copy operations.
-- **Browser safety limits**: The tool estimates edit distance and enforces work limits before and during Myers processing to keep the app responsive.
+1. A linear scan validates input limits and estimates the work without first constructing line arrays.
+2. Only provably small input is eligible for a synchronous fallback. All other accepted input requires a Web Worker.
+3. Myers line diff establishes exact anchors. Unmatched delete/insert hunks are aligned with deterministic bounded full or banded dynamic programming.
+4. Only the selected modified pairs receive a grapheme-aware character diff. Their changes become UTF-16 offsets in a shared `Uint32Array` pool.
+5. The worker returns one atomic, source-free `DiffModelV2` result with transferable typed-array buffers. Original text remains the single source of truth on the main thread.
+6. The virtual view creates DOM nodes only for the shared visible row window. User content is assigned through DOM APIs and `textContent`, not generated HTML.
+
+The comparison shares explicit work budgets across line diffing, row alignment, character diffing, compact ranges, and rendering. If a detail budget is exhausted, the UI uses a whole-line highlight or a paged preview and displays **Detailed rendering reduced for performance**. It never invents a modified-line pairing when reliable alignment cannot be completed.
+
+The implementation has no diff library or other runtime dependency.
 
 ### Verification
 
 ```bash
-npm test       # behavior and rendering tests
-npm run perf   # performance checks for large and high-change inputs
+npm test       # correctness, protocol, race, routing, virtual DOM, copy, and cleanup checks
+npm run perf   # isolated large-input model and memory checks
 ```
+
+`npm run perf` starts every fixture in a separate Node process with garbage collection exposed and a 256 MiB JavaScript heap limit. It checks advertised maximum-size inputs, compact-model structure, exact source reconstruction, typed-array and range budgets, bounded alignment, and conservative fallback behavior. Timing is reported for information rather than enforced as a machine-dependent threshold.
 
 ### Browser Compatibility
 
-Works in all modern browsers that support:
-- ES6 JavaScript
-- LocalStorage
-- CSS Variables
+The interface requires a modern browser with ES6 JavaScript, typed arrays, `requestAnimationFrame`, CSS variables, and Local Storage. Worker-required comparisons additionally need Web Worker support. `Intl.Segmenter` is used when available; the comparison retains a Unicode code-point fallback.
 
 ## Privacy
 
-- No data collection
-- No cookies
-- No third-party tracking
-- Optional: Theme preference stored in localStorage only
+- No collection or storage of compared text
+- No analytics, advertising, cookies, or third-party tracking
+- Compared text is passed only between the page and an in-browser same-origin Worker
+- Theme preference is the only value stored in Local Storage
 
-See [Privacy Policy](https://diffvoid.com/privacy.html), [Terms of Service](https://diffvoid.com/tos.html), and [About](https://diffvoid.com/about.html) for details.
+See the [Privacy Policy](https://diffvoid.com/privacy.html), [Terms of Service](https://diffvoid.com/tos.html), and [About](https://diffvoid.com/about.html) pages for details.
 
 ## Development
 
 ### Project Structure
 
-```
+```text
 public/
-├── index.html       # Main HTML structure
-├── script.js        # Comparison logic and UI
-├── shared-diff.js   # Shared diff rendering (invisibles, HTML generation)
-├── worker.js        # Web Worker for off-thread diff rendering
-├── theme.js         # Theme toggle and persistence
-├── style.css        # Styling with CSS variables
-├── shared.css       # Shared styles for static pages
-├── favicon.svg      # Site favicon
-├── tos.html         # Terms of Service
-├── privacy.html     # Privacy Policy
-├── about.html       # About page
-├── robots.txt       # Robots exclusion rules
-└── sitemap.xml      # Sitemap
+├── index.html           # Main UI, accessibility markup, and copy controls
+├── script.js            # Input state and controller/view orchestration
+├── shared-diff.js       # Validation, Myers, budgets, DP alignment, and DiffModelV2
+├── diff-controller.js   # Worker jobs, timeouts, cancellation, and stale-result protection
+├── virtual-diff.js      # Virtual DOM rendering, previews, and logical selection
+├── worker.js            # Worker protocol and transferable atomic results
+├── theme.js             # Theme toggle and local persistence
+├── style.css            # Main application and virtual diff styles
+├── shared.css           # Styles shared by static pages
+├── about.html           # About page
+├── privacy.html         # Privacy policy
+└── tos.html             # Terms of service
+scripts/
+└── perf-diff.js         # Isolated 256 MiB performance and memory assertions
+test/
+├── shared-diff.test.js
+├── diff-controller.test.js
+├── diff-routing.test.js
+├── worker-protocol.test.js
+├── virtual-diff.test.js
+└── legacy-cleanup.test.js
 ```
 
 ### Running Locally
 
-Simply open `public/index.html` in a browser, or serve with any static file server:
+Serve `public/` over HTTP for the complete application:
 
 ```bash
-# Using Python 3
-python -m http.server 8000 --directory public
-
-# Using Node.js
-npx serve public
+python3 -m http.server 8000 --directory public
 ```
 
-Then visit `http://localhost:8000`
+Then visit `http://localhost:8000`.
+
+Opening `public/index.html` directly with a `file://` URL is not recommended because browsers commonly block local Web Workers. A comparison classified as safely small can fall back to synchronous processing if worker creation fails. A larger comparison deliberately stops with an instruction to use HTTP or compare smaller sections; it is never moved to the main thread.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Author
 
-Timo Heimonen  <timo.heimonen@proton.me>
+Timo Heimonen <timo.heimonen@proton.me>
