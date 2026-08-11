@@ -186,6 +186,7 @@ const DIFF_LIMITS = {
 const DIFF_WORK_BUDGET_DEFAULTS = {
     remainingMyersSteps: 40000000,
     remainingAlignmentCells: 2000000,
+    remainingAlignmentScoreWork: 32000000,
     remainingCharEditDistance: 50000,
     remainingRangePairs: 200000
 };
@@ -209,7 +210,15 @@ const SYNC_DIFF_LIMITS = {
 const MODIFIED_SIMILARITY_THRESHOLD = 0.65;
 const SHORT_LINE_SIMILARITY_THRESHOLD = 0.5;
 const SHORT_LINE_MAX_UNITS = 32;
-const ALIGN_LOOKAHEAD = 4;
+const ALIGN_SCORE_SCALE = 1000000;
+const ALIGN_FULL_MAX_CELLS = 262144;
+const ALIGN_BAND_MAX_CELLS = 1000000;
+const ALIGN_SCORE_WORK_MAX = 32000000;
+const ALIGN_PREFERRED_BAND = 64;
+const ALIGN_ACTION_NONE = 0;
+const ALIGN_ACTION_PAIR = 1;
+const ALIGN_ACTION_MISSING = 2;
+const ALIGN_ACTION_ADDED = 3;
 const MYERS_TRACE_MAX_ITEMS = 512;
 let graphemeSegmenter = null;
 
@@ -236,6 +245,11 @@ function createDiffWorkBudget(overrides) {
             overrides,
             'remainingAlignmentCells',
             DIFF_WORK_BUDGET_DEFAULTS.remainingAlignmentCells
+        ),
+        remainingAlignmentScoreWork: finiteBudgetValue(
+            overrides,
+            'remainingAlignmentScoreWork',
+            DIFF_WORK_BUDGET_DEFAULTS.remainingAlignmentScoreWork
         ),
         remainingCharEditDistance: finiteBudgetValue(
             overrides,
@@ -1190,6 +1204,113 @@ function lineSimilarity(leftLine, rightLine) {
     return weighted * (0.6 + 0.4 * lengthRatio);
 }
 
+function createLineProfile(text) {
+    return {
+        text: text,
+        codeUnitLength: text.length,
+        bigramCounts: null,
+        bigramTotal: 0,
+        shortUnits: null,
+        visualShortUnits: null,
+        isShort: null
+    };
+}
+
+function ensureLineProfileBigrams(profile) {
+    if (profile.bigramCounts) return;
+    const bigrams = getBigrams(profile.text);
+    profile.bigramCounts = bigrams.map;
+    profile.bigramTotal = bigrams.total;
+}
+
+function ensureLineProfileShortUnits(profile) {
+    if (profile.isShort !== null) return;
+    const units = splitDiffUnits(profile.text).units;
+    profile.isShort = units.length <= SHORT_LINE_MAX_UNITS;
+    if (profile.isShort) {
+        profile.shortUnits = units;
+        profile.visualShortUnits = buildVisualSkeletonUnits(units);
+    }
+}
+
+function lineSimilarityFromProfiles(leftProfile, rightProfile) {
+    const leftLine = leftProfile.text;
+    const rightLine = rightProfile.text;
+    if (leftLine === rightLine) return 1;
+    if (!leftLine.length || !rightLine.length) return 0;
+
+    const leftLen = leftProfile.codeUnitLength;
+    const rightLen = rightProfile.codeUnitLength;
+    const maxLen = Math.max(leftLen, rightLen);
+    const minLen = Math.min(leftLen, rightLen);
+    const lengthRatio = minLen / maxLen;
+    if (lengthRatio < 0.4) return 0;
+
+    let prefix = 0;
+    while (prefix < minLen && leftLine[prefix] === rightLine[prefix]) prefix++;
+
+    let suffix = 0;
+    while (
+        suffix < minLen - prefix
+        && leftLine[leftLen - 1 - suffix] === rightLine[rightLen - 1 - suffix]
+    ) {
+        suffix++;
+    }
+
+    ensureLineProfileBigrams(leftProfile);
+    ensureLineProfileBigrams(rightProfile);
+    let intersection = 0;
+    for (let gram in leftProfile.bigramCounts) {
+        if (rightProfile.bigramCounts[gram]) {
+            intersection += Math.min(
+                leftProfile.bigramCounts[gram],
+                rightProfile.bigramCounts[gram]
+            );
+        }
+    }
+
+    const denominator = leftProfile.bigramTotal + rightProfile.bigramTotal;
+    const dice = denominator > 0 ? (2 * intersection) / denominator : 0;
+    const edgeRatio = (prefix + suffix) / maxLen;
+    const weighted = (dice * 0.65) + (edgeRatio * 0.35);
+    return weighted * (0.6 + 0.4 * lengthRatio);
+}
+
+function modifiedLineScoreFromProfiles(leftProfile, rightProfile) {
+    const similarity = lineSimilarityFromProfiles(leftProfile, rightProfile);
+    ensureLineProfileShortUnits(leftProfile);
+    ensureLineProfileShortUnits(rightProfile);
+    if (!leftProfile.isShort || !rightProfile.isShort) return similarity;
+
+    const directSimilarity = boundedEditDistanceSimilarity(
+        leftProfile.shortUnits,
+        rightProfile.shortUnits
+    );
+    const visualSimilarity = boundedEditDistanceSimilarity(
+        leftProfile.visualShortUnits,
+        rightProfile.visualShortUnits
+    );
+    return Math.max(similarity, directSimilarity, visualSimilarity);
+}
+
+function quantizedModifiedLineScore(leftLine, rightLine) {
+    const leftProfile = createLineProfile(leftLine);
+    const rightProfile = createLineProfile(rightLine);
+    const scoreQ = Math.round(
+        modifiedLineScoreFromProfiles(leftProfile, rightProfile) * ALIGN_SCORE_SCALE
+    );
+    const shortPair = leftProfile.isShort && rightProfile.isShort;
+    const thresholdQ = shortPair
+        ? Math.round(SHORT_LINE_SIMILARITY_THRESHOLD * ALIGN_SCORE_SCALE)
+        : Math.round(MODIFIED_SIMILARITY_THRESHOLD * ALIGN_SCORE_SCALE);
+    return {
+        scoreQ: scoreQ,
+        thresholdQ: thresholdQ,
+        allowed: scoreQ >= thresholdQ,
+        shortPair: shortPair
+    };
+}
+
 function createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex) {
     if (type === 'match') {
         return {
@@ -1225,107 +1346,618 @@ function appendDiffRow(diff, leftLines, rightLines, type, leftLineIndex, rightLi
     diff.push(createLegacyDiffRow(leftLines, rightLines, type, leftLineIndex, rightLineIndex));
 }
 
-function appendAlignedRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, diff, createRow) {
+const ALIGNMENT_SCORE_BUDGET_ERROR_CODE = 'DIFF_ALIGNMENT_SCORE_BUDGET_EXCEEDED';
+
+function alignmentScoreWorkForLengths(leftLength, rightLength) {
+    return 1 + leftLength + rightLength;
+}
+
+function createFullAlignmentLayout(leftCount, rightCount) {
+    const rowStarts = new Int32Array(leftCount + 1);
+    const rowEnds = new Int32Array(leftCount + 1);
+    const rowOffsets = new Uint32Array(leftCount + 2);
+    const rowWidth = rightCount + 1;
+    for (let i = 0; i <= leftCount; i++) {
+        rowEnds[i] = rightCount;
+        rowOffsets[i] = i * rowWidth;
+    }
+    rowOffsets[leftCount + 1] = (leftCount + 1) * rowWidth;
+    return {
+        kind: 'full',
+        band: null,
+        rowStarts: rowStarts,
+        rowEnds: rowEnds,
+        rowOffsets: rowOffsets,
+        cellCount: (leftCount + 1) * (rightCount + 1)
+    };
+}
+
+function alignmentBandRowStart(row, leftCount, rightCount, band) {
+    const threshold = band * Math.max(leftCount, rightCount);
+    return Math.max(0, Math.ceil(((row * rightCount) - threshold) / leftCount));
+}
+
+function alignmentBandRowEnd(row, leftCount, rightCount, band) {
+    const threshold = band * Math.max(leftCount, rightCount);
+    return Math.min(rightCount, Math.floor(((row * rightCount) + threshold) / leftCount));
+}
+
+function createBandedAlignmentLayout(leftCount, rightCount, band) {
+    const rowStarts = new Int32Array(leftCount + 1);
+    const rowEnds = new Int32Array(leftCount + 1);
+    const rowOffsets = new Uint32Array(leftCount + 2);
+    let cellCount = 0;
+
+    for (let i = 0; i <= leftCount; i++) {
+        const start = alignmentBandRowStart(i, leftCount, rightCount, band);
+        const end = alignmentBandRowEnd(i, leftCount, rightCount, band);
+        rowStarts[i] = start;
+        rowEnds[i] = end;
+        rowOffsets[i] = cellCount;
+        cellCount += end - start + 1;
+    }
+    rowOffsets[leftCount + 1] = cellCount;
+
+    return {
+        kind: 'banded',
+        band: band,
+        rowStarts: rowStarts,
+        rowEnds: rowEnds,
+        rowOffsets: rowOffsets,
+        cellCount: cellCount
+    };
+}
+
+function estimateAlignmentScoreWork(
+    layout,
+    leftLines,
+    rightLines,
+    leftStart,
+    rightStart,
+    limit,
+    executionContext
+) {
+    let work = 0;
+    let deadlineWork = 0;
+    const tracksDeadline = executionContext && executionContext.deadlineAt !== null;
+    for (let i = 1; i < layout.rowStarts.length; i++) {
+        const start = Math.max(1, layout.rowStarts[i]);
+        const end = layout.rowEnds[i];
+        const previousStart = layout.rowStarts[i - 1];
+        const previousEnd = layout.rowEnds[i - 1];
+        for (let j = start; j <= end; j++) {
+            if (tracksDeadline) {
+                deadlineWork++;
+                if (deadlineWork >= DIFF_DEADLINE_CHECK_INTERVAL) {
+                    executionContext.deadlineWorkSinceCheck += deadlineWork;
+                    deadlineWork = 0;
+                    checkDiffDeadline(executionContext, false);
+                }
+            }
+            if (j - 1 < previousStart || j - 1 > previousEnd) continue;
+            work += alignmentScoreWorkForLengths(
+                leftLines[leftStart + i - 1].length,
+                rightLines[rightStart + j - 1].length
+            );
+            if (work > limit) {
+                if (deadlineWork) {
+                    executionContext.deadlineWorkSinceCheck += deadlineWork;
+                    checkDiffDeadline(executionContext, false);
+                }
+                return work;
+            }
+        }
+    }
+    if (deadlineWork) {
+        executionContext.deadlineWorkSinceCheck += deadlineWork;
+        checkDiffDeadline(executionContext, false);
+    }
+    return work;
+}
+
+function alignmentActionPriority(action, leftCount, rightCount) {
+    if (action === ALIGN_ACTION_PAIR) return 0;
+    if (leftCount > rightCount) {
+        return action === ALIGN_ACTION_MISSING ? 1 : 2;
+    }
+    return action === ALIGN_ACTION_ADDED ? 1 : 2;
+}
+
+function isBetterAlignmentCandidate(
+    cost,
+    pairCount,
+    drift,
+    action,
+    bestCost,
+    bestPairCount,
+    bestDrift,
+    bestAction,
+    leftCount,
+    rightCount
+) {
+    if (cost !== bestCost) return cost < bestCost;
+    if (pairCount !== bestPairCount) return pairCount > bestPairCount;
+    if (drift !== bestDrift) return drift < bestDrift;
+    return alignmentActionPriority(action, leftCount, rightCount)
+        < alignmentActionPriority(bestAction, leftCount, rightCount);
+}
+
+function alignmentBackpointerAt(layout, row, column, backpointers) {
+    if (column < layout.rowStarts[row] || column > layout.rowEnds[row]) {
+        return ALIGN_ACTION_NONE;
+    }
+    return backpointers[layout.rowOffsets[row] + column - layout.rowStarts[row]];
+}
+
+function runAlignmentDp(leftCount, rightCount, layout, getScoreQ, executionContext) {
+    const backpointers = new Uint8Array(layout.cellCount);
+    let prevCost = new Float64Array(rightCount + 1);
+    let currCost = new Float64Array(rightCount + 1);
+    let prevPairs = new Uint32Array(rightCount + 1);
+    let currPairs = new Uint32Array(rightCount + 1);
+    let prevDrift = new Float64Array(rightCount + 1);
+    let currDrift = new Float64Array(rightCount + 1);
+    prevCost.fill(Infinity);
+    currCost.fill(Infinity);
+    prevDrift.fill(Infinity);
+    currDrift.fill(Infinity);
+
+    const firstStart = layout.rowStarts[0];
+    const firstEnd = layout.rowEnds[0];
+    for (let j = firstStart; j <= firstEnd; j++) {
+        const pointerOffset = layout.rowOffsets[0] + j - firstStart;
+        if (j === 0) {
+            prevCost[j] = 0;
+            prevPairs[j] = 0;
+            prevDrift[j] = 0;
+            continue;
+        }
+        if (j - 1 >= firstStart && Number.isFinite(prevCost[j - 1])) {
+            prevCost[j] = prevCost[j - 1] + ALIGN_SCORE_SCALE;
+            prevPairs[j] = prevPairs[j - 1];
+            prevDrift[j] = prevDrift[j - 1];
+            backpointers[pointerOffset] = ALIGN_ACTION_ADDED;
+        }
+    }
+
+    let prevStart = firstStart;
+    let prevEnd = firstEnd;
+    for (let i = 1; i <= leftCount; i++) {
+        const currentStart = layout.rowStarts[i];
+        const currentEnd = layout.rowEnds[i];
+        for (let j = currentStart; j <= currentEnd; j++) {
+            currCost[j] = Infinity;
+            currPairs[j] = 0;
+            currDrift[j] = Infinity;
+            let bestAction = ALIGN_ACTION_NONE;
+            let bestCost = Infinity;
+            let bestPairCount = 0;
+            let bestDrift = Infinity;
+
+            if (j >= prevStart && j <= prevEnd && Number.isFinite(prevCost[j])) {
+                const cost = prevCost[j] + ALIGN_SCORE_SCALE;
+                if (isBetterAlignmentCandidate(
+                    cost,
+                    prevPairs[j],
+                    prevDrift[j],
+                    ALIGN_ACTION_MISSING,
+                    bestCost,
+                    bestPairCount,
+                    bestDrift,
+                    bestAction,
+                    leftCount,
+                    rightCount
+                )) {
+                    bestAction = ALIGN_ACTION_MISSING;
+                    bestCost = cost;
+                    bestPairCount = prevPairs[j];
+                    bestDrift = prevDrift[j];
+                }
+            }
+
+            if (j > currentStart && Number.isFinite(currCost[j - 1])) {
+                const cost = currCost[j - 1] + ALIGN_SCORE_SCALE;
+                if (isBetterAlignmentCandidate(
+                    cost,
+                    currPairs[j - 1],
+                    currDrift[j - 1],
+                    ALIGN_ACTION_ADDED,
+                    bestCost,
+                    bestPairCount,
+                    bestDrift,
+                    bestAction,
+                    leftCount,
+                    rightCount
+                )) {
+                    bestAction = ALIGN_ACTION_ADDED;
+                    bestCost = cost;
+                    bestPairCount = currPairs[j - 1];
+                    bestDrift = currDrift[j - 1];
+                }
+            }
+
+            if (j > 0 && j - 1 >= prevStart && j - 1 <= prevEnd
+                && Number.isFinite(prevCost[j - 1])) {
+                const scoreQ = getScoreQ(i - 1, j - 1);
+                if (scoreQ >= 0) {
+                    const cost = prevCost[j - 1]
+                        + (2 * (ALIGN_SCORE_SCALE - scoreQ));
+                    const pairCount = prevPairs[j - 1] + 1;
+                    const drift = prevDrift[j - 1] + Math.abs(
+                        ((2 * (i - 1) + 1) * rightCount)
+                        - ((2 * (j - 1) + 1) * leftCount)
+                    );
+                    if (isBetterAlignmentCandidate(
+                        cost,
+                        pairCount,
+                        drift,
+                        ALIGN_ACTION_PAIR,
+                        bestCost,
+                        bestPairCount,
+                        bestDrift,
+                        bestAction,
+                        leftCount,
+                        rightCount
+                    )) {
+                        bestAction = ALIGN_ACTION_PAIR;
+                        bestCost = cost;
+                        bestPairCount = pairCount;
+                        bestDrift = drift;
+                    }
+                }
+            }
+
+            if (bestAction !== ALIGN_ACTION_NONE) {
+                currCost[j] = bestCost;
+                currPairs[j] = bestPairCount;
+                currDrift[j] = bestDrift;
+                backpointers[layout.rowOffsets[i] + j - currentStart] = bestAction;
+            }
+        }
+
+        if (executionContext) {
+            executionContext.deadlineWorkSinceCheck += currentEnd - currentStart + 1;
+            checkDiffDeadline(executionContext, false);
+        }
+        let swap = prevCost;
+        prevCost = currCost;
+        currCost = swap;
+        swap = prevPairs;
+        prevPairs = currPairs;
+        currPairs = swap;
+        swap = prevDrift;
+        prevDrift = currDrift;
+        currDrift = swap;
+        prevStart = currentStart;
+        prevEnd = currentEnd;
+    }
+
+    if (!Number.isFinite(prevCost[rightCount])) return null;
+    const actions = [];
+    let i = leftCount;
+    let j = rightCount;
+    while (i > 0 || j > 0) {
+        const action = alignmentBackpointerAt(layout, i, j, backpointers);
+        if (action === ALIGN_ACTION_PAIR) {
+            actions.push({ type: 'PAIR', leftIndex: i - 1, rightIndex: j - 1 });
+            i--;
+            j--;
+        } else if (action === ALIGN_ACTION_MISSING) {
+            actions.push({ type: 'MISSING', leftIndex: i - 1 });
+            i--;
+        } else if (action === ALIGN_ACTION_ADDED) {
+            actions.push({ type: 'ADDED', rightIndex: j - 1 });
+            j--;
+        } else {
+            return null;
+        }
+    }
+    actions.reverse();
+    return {
+        actions: actions,
+        cost: prevCost[rightCount],
+        pairCount: prevPairs[rightCount],
+        drift: prevDrift[rightCount],
+        backpointerBytes: backpointers.byteLength
+    };
+}
+
+function createAlignmentStats() {
+    return {
+        fullHunks: 0,
+        bandedHunks: 0,
+        fallbackHunks: 0,
+        cellsUsed: 0,
+        scoreWorkUsed: 0,
+        scoreEvaluations: 0,
+        leftProfilesBuilt: 0,
+        rightProfilesBuilt: 0,
+        intralineComputations: 0,
+        maxBandUsed: 0
+    };
+}
+
+function createAlignmentContext(
+    leftLines,
+    rightLines,
+    workBudget,
+    executionContext,
+    resultStats
+) {
+    const alignmentStats = createAlignmentStats();
+    if (resultStats) resultStats.alignment = alignmentStats;
+    return {
+        leftLines: leftLines,
+        rightLines: rightLines,
+        workBudget: normalizeDiffWorkBudget(workBudget),
+        executionContext: executionContext || null,
+        leftProfiles: new Array(leftLines.length),
+        rightProfiles: new Array(rightLines.length),
+        stats: alignmentStats
+    };
+}
+
+function getCachedAlignmentProfile(context, side, lineIndex) {
+    const isRight = side === 'right';
+    const cache = isRight ? context.rightProfiles : context.leftProfiles;
+    if (!cache[lineIndex]) {
+        const lines = isRight ? context.rightLines : context.leftLines;
+        cache[lineIndex] = createLineProfile(lines[lineIndex]);
+        if (isRight) context.stats.rightProfilesBuilt++;
+        else context.stats.leftProfilesBuilt++;
+    }
+    return cache[lineIndex];
+}
+
+function alignmentCandidateScoreQ(context, leftLineIndex, rightLineIndex) {
+    const leftLine = context.leftLines[leftLineIndex];
+    const rightLine = context.rightLines[rightLineIndex];
+    const scoreWork = alignmentScoreWorkForLengths(leftLine.length, rightLine.length);
+    if (context.workBudget.remainingAlignmentScoreWork < scoreWork) {
+        context.workBudget.remainingAlignmentScoreWork = 0;
+        throw createCodedDiffError(
+            ALIGNMENT_SCORE_BUDGET_ERROR_CODE,
+            'Row alignment score budget exceeded.'
+        );
+    }
+    context.workBudget.remainingAlignmentScoreWork -= scoreWork;
+    context.stats.scoreWorkUsed += scoreWork;
+    context.stats.scoreEvaluations++;
+
+    if (context.executionContext) {
+        context.executionContext.deadlineWorkSinceCheck += scoreWork;
+        checkDiffDeadline(context.executionContext, false);
+    }
+
+    const leftProfile = getCachedAlignmentProfile(context, 'left', leftLineIndex);
+    const rightProfile = getCachedAlignmentProfile(context, 'right', rightLineIndex);
+    const scoreQ = Math.round(
+        modifiedLineScoreFromProfiles(leftProfile, rightProfile) * ALIGN_SCORE_SCALE
+    );
+    const shortPair = leftProfile.isShort && rightProfile.isShort;
+    const thresholdQ = shortPair
+        ? Math.round(SHORT_LINE_SIMILARITY_THRESHOLD * ALIGN_SCORE_SCALE)
+        : Math.round(MODIFIED_SIMILARITY_THRESHOLD * ALIGN_SCORE_SCALE);
+    return scoreQ >= thresholdQ ? scoreQ : -1;
+}
+
+function alignmentLayoutFits(
+    layout,
+    leftLines,
+    rightLines,
+    leftStart,
+    rightStart,
+    context,
+    maxCells
+) {
+    if (layout.cellCount > maxCells) return false;
+    const scoreWork = estimateAlignmentScoreWork(
+        layout,
+        leftLines,
+        rightLines,
+        leftStart,
+        rightStart,
+        context.workBudget.remainingAlignmentScoreWork,
+        context.executionContext
+    );
+    return scoreWork <= context.workBudget.remainingAlignmentScoreWork;
+}
+
+function selectAlignmentLayout(
+    leftLines,
+    rightLines,
+    leftStart,
+    leftCount,
+    rightStart,
+    rightCount,
+    context
+) {
+    const fullCellCount = (leftCount + 1) * (rightCount + 1);
+    if (fullCellCount <= ALIGN_FULL_MAX_CELLS) {
+        const full = createFullAlignmentLayout(leftCount, rightCount);
+        if (alignmentLayoutFits(
+            full,
+            leftLines,
+            rightLines,
+            leftStart,
+            rightStart,
+            context,
+            context.workBudget.remainingAlignmentCells
+        )) {
+            return full;
+        }
+    }
+
+    const maxCells = Math.min(
+        ALIGN_BAND_MAX_CELLS,
+        context.workBudget.remainingAlignmentCells
+    );
+    let low = 1;
+    let high = ALIGN_PREFERRED_BAND;
+    let best = null;
+    while (low <= high) {
+        const band = Math.floor((low + high) / 2);
+        const layout = createBandedAlignmentLayout(leftCount, rightCount, band);
+        if (alignmentLayoutFits(
+            layout,
+            leftLines,
+            rightLines,
+            leftStart,
+            rightStart,
+            context,
+            maxCells
+        )) {
+            best = layout;
+            low = band + 1;
+        } else {
+            high = band - 1;
+        }
+    }
+    return best;
+}
+
+function conservativeAlignmentFallback(leftStart, leftCount, rightStart, rightCount) {
+    const actions = [];
+    for (let i = 0; i < leftCount; i++) {
+        actions.push({ type: 'MISSING', leftIndex: leftStart + i });
+    }
+    for (let j = 0; j < rightCount; j++) {
+        actions.push({ type: 'ADDED', rightIndex: rightStart + j });
+    }
+    return actions;
+}
+
+function computeAlignedRowActions(
+    leftLines,
+    rightLines,
+    leftStart,
+    leftEnd,
+    rightStart,
+    rightEnd,
+    context
+) {
     const leftCount = leftEnd - leftStart;
     const rightCount = rightEnd - rightStart;
-
-    if (leftCount === 0) {
-        for (let ri = rightStart; ri < rightEnd; ri++) {
-            appendDiffRow(diff, leftLines, rightLines, 'added', null, ri, createRow);
-        }
-        return;
+    if (leftCount === 0 || rightCount === 0) {
+        return conservativeAlignmentFallback(leftStart, leftCount, rightStart, rightCount);
     }
 
-    if (rightCount === 0) {
-        for (let li = leftStart; li < leftEnd; li++) {
-            appendDiffRow(diff, leftLines, rightLines, 'missing', li, null, createRow);
-        }
-        return;
+    const alignmentContext = context || createAlignmentContext(
+        leftLines,
+        rightLines,
+        createDiffWorkBudget(),
+        null,
+        null
+    );
+    const layout = selectAlignmentLayout(
+        leftLines,
+        rightLines,
+        leftStart,
+        leftCount,
+        rightStart,
+        rightCount,
+        alignmentContext
+    );
+    if (!layout) {
+        alignmentContext.stats.fallbackHunks++;
+        return conservativeAlignmentFallback(leftStart, leftCount, rightStart, rightCount);
     }
 
-    let i = leftStart;
-    let j = rightStart;
-    while (i < leftEnd && j < rightEnd) {
-        const s00 = modifiedLineScore(leftLines[i], rightLines[j]);
+    alignmentContext.workBudget.remainingAlignmentCells -= layout.cellCount;
+    alignmentContext.stats.cellsUsed += layout.cellCount;
+    if (layout.kind === 'full') alignmentContext.stats.fullHunks++;
+    else {
+        alignmentContext.stats.bandedHunks++;
+        alignmentContext.stats.maxBandUsed = Math.max(
+            alignmentContext.stats.maxBandUsed,
+            layout.band
+        );
+    }
 
-        let bestRightScore = -1;
-        let bestRightSkip = 0;
-        for (let rSkip = 1; rSkip <= ALIGN_LOOKAHEAD && j + rSkip < rightEnd; rSkip++) {
-            const rScore = modifiedLineScore(leftLines[i], rightLines[j + rSkip]);
-            if (rScore > bestRightScore) {
-                bestRightScore = rScore;
-                bestRightSkip = rSkip;
-            }
+    let result;
+    try {
+        result = runAlignmentDp(
+            leftCount,
+            rightCount,
+            layout,
+            function (leftLocalIndex, rightLocalIndex) {
+                return alignmentCandidateScoreQ(
+                    alignmentContext,
+                    leftStart + leftLocalIndex,
+                    rightStart + rightLocalIndex
+                );
+            },
+            alignmentContext.executionContext
+        );
+    } catch (err) {
+        if (!err || err.code !== ALIGNMENT_SCORE_BUDGET_ERROR_CODE) throw err;
+        result = null;
+    }
+    if (!result) {
+        alignmentContext.stats.fallbackHunks++;
+        return conservativeAlignmentFallback(leftStart, leftCount, rightStart, rightCount);
+    }
+
+    return result.actions.map(function (action) {
+        if (action.type === 'PAIR') {
+            return {
+                type: 'PAIR',
+                leftIndex: leftStart + action.leftIndex,
+                rightIndex: rightStart + action.rightIndex
+            };
         }
-
-        let bestLeftScore = -1;
-        let bestLeftSkip = 0;
-        for (let lSkip = 1; lSkip <= ALIGN_LOOKAHEAD && i + lSkip < leftEnd; lSkip++) {
-            const lScore = modifiedLineScore(leftLines[i + lSkip], rightLines[j]);
-            if (lScore > bestLeftScore) {
-                bestLeftScore = lScore;
-                bestLeftSkip = lSkip;
-            }
+        if (action.type === 'MISSING') {
+            return { type: 'MISSING', leftIndex: leftStart + action.leftIndex };
         }
+        return { type: 'ADDED', rightIndex: rightStart + action.rightIndex };
+    });
+}
 
-        if (isModifiedLineCandidate(leftLines[i], rightLines[j], s00) && s00 >= bestRightScore && s00 >= bestLeftScore) {
-            appendDiffRow(diff, leftLines, rightLines, 'modified', i, j, createRow);
-            i++;
-            j++;
-            continue;
-        }
-
-        if (isModifiedLineCandidate(leftLines[i], rightLines[j + bestRightSkip], bestRightScore) && bestRightScore >= bestLeftScore) {
-            for (let add = 0; add < bestRightSkip; add++) {
-                appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
-                j++;
-            }
-            continue;
-        }
-
-        if (isModifiedLineCandidate(leftLines[i + bestLeftSkip], rightLines[j], bestLeftScore)) {
-            for (let miss = 0; miss < bestLeftSkip; miss++) {
-                appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
-                i++;
-            }
-            continue;
-        }
-
-        const leftRemaining = leftEnd - i;
-        const rightRemaining = rightEnd - j;
-        if (rightRemaining > leftRemaining) {
-            appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
-            j++;
-        } else if (leftRemaining > rightRemaining) {
-            appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
-            i++;
+function appendAlignedActions(leftLines, rightLines, actions, diff, createRow) {
+    for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
+        if (action.type === 'PAIR') {
+            appendDiffRow(
+                diff,
+                leftLines,
+                rightLines,
+                'modified',
+                action.leftIndex,
+                action.rightIndex,
+                createRow
+            );
+        } else if (action.type === 'MISSING') {
+            appendDiffRow(
+                diff,
+                leftLines,
+                rightLines,
+                'missing',
+                action.leftIndex,
+                null,
+                createRow
+            );
         } else {
-            const fallbackSim = modifiedLineScore(leftLines[i], rightLines[j]);
-            if (isModifiedLineCandidate(leftLines[i], rightLines[j], fallbackSim)) {
-                appendDiffRow(diff, leftLines, rightLines, 'modified', i, j, createRow);
-                i++;
-                j++;
-            } else {
-                appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
-                i++;
-                appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
-                j++;
-            }
+            appendDiffRow(
+                diff,
+                leftLines,
+                rightLines,
+                'added',
+                null,
+                action.rightIndex,
+                createRow
+            );
         }
-    }
-
-    while (i < leftEnd) {
-        appendDiffRow(diff, leftLines, rightLines, 'missing', i, null, createRow);
-        i++;
-    }
-
-    while (j < rightEnd) {
-        appendDiffRow(diff, leftLines, rightLines, 'added', null, j, createRow);
-        j++;
     }
 }
 
-function appendMyersRanges(leftLines, rightLines, ranges, diff, createRow) {
+function appendMyersRanges(
+    leftLines,
+    rightLines,
+    ranges,
+    diff,
+    createRow,
+    alignmentContext
+) {
     let pendingLeftStart = null;
     let pendingLeftEnd = null;
     let pendingRightStart = null;
@@ -1342,16 +1974,16 @@ function appendMyersRanges(leftLines, rightLines, ranges, diff, createRow) {
 
     function flushPending() {
         if (pendingLeftStart === null) return;
-        appendAlignedRange(
+        const actions = computeAlignedRowActions(
             leftLines,
             rightLines,
             pendingLeftStart,
             pendingLeftEnd,
             pendingRightStart,
             pendingRightEnd,
-            diff,
-            createRow
+            alignmentContext
         );
+        appendAlignedActions(leftLines, rightLines, actions, diff, createRow);
         pendingLeftStart = null;
         pendingLeftEnd = null;
         pendingRightStart = null;
@@ -1462,6 +2094,7 @@ function createCompactRowFactory(
         }
 
         stats.modifiedRows++;
+        if (stats.alignment) stats.alignment.intralineComputations++;
         const intraline = computeIntralineChangeRanges(
             leftLines[leftLineIndex],
             rightLines[rightLineIndex],
@@ -1570,7 +2203,21 @@ function computeDiffModel(left, right, options) {
         modelLimits,
         executionContext
     );
-    appendMyersRanges(leftLines, rightLines, ranges, rows, createRow);
+    const alignmentContext = createAlignmentContext(
+        leftLines,
+        rightLines,
+        workBudget,
+        executionContext,
+        stats
+    );
+    appendMyersRanges(
+        leftLines,
+        rightLines,
+        ranges,
+        rows,
+        createRow,
+        alignmentContext
+    );
     checkDiffDeadline(executionContext, true);
     reportDiffProgress(options, 'intraline', progressTotal, progressTotal);
 
@@ -1578,6 +2225,7 @@ function computeDiffModel(left, right, options) {
     stats.workBudget = {
         remainingMyersSteps: workBudget.remainingMyersSteps,
         remainingAlignmentCells: workBudget.remainingAlignmentCells,
+        remainingAlignmentScoreWork: workBudget.remainingAlignmentScoreWork,
         remainingCharEditDistance: workBudget.remainingCharEditDistance,
         remainingRangePairs: workBudget.remainingRangePairs
     };
@@ -1604,7 +2252,14 @@ function computeLineDiff(left, right) {
     const ranges = computeMyersRanges(leftLines, rightLines, {
         maxEditDistance: DIFF_LIMITS.maxLineEditDistance
     });
-    appendMyersRanges(leftLines, rightLines, ranges, diff);
+    const alignmentContext = createAlignmentContext(
+        leftLines,
+        rightLines,
+        createDiffWorkBudget(),
+        null,
+        null
+    );
+    appendMyersRanges(leftLines, rightLines, ranges, diff, null, alignmentContext);
 
     return { leftLines: leftLines, rightLines: rightLines, diff: diff };
 }
