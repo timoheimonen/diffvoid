@@ -36,10 +36,6 @@
   }
 
   window.diffvoidTheme = {
-    STORAGE_KEY,
-    getTheme,
-    applyTheme,
-    initTheme,
     toggleTheme
   };
 

@@ -40,8 +40,8 @@
         <li><strong>No trackers / analytics</strong>: We do not use third-party analytics scripts, tracking pixels, or
           advertising beacons.</li>
         <li><strong>No accounts</strong>: There is no login and no user profile.</li>
-        <li><strong>Local processing only</strong>: All text comparison happens entirely in your browser. Your text is
-          never sent to any server.</li>
+        <li><strong>Local processing only</strong>: Text is processed only by the page and, for normal comparisons, its
+          same-origin in-browser Web Worker. Compared text is never sent to any server.</li>
         <li><strong>Optional local storage</strong>: Your theme preference is stored locally in
           your browser and never sent to a server.</li>
       </ul>
@@ -65,8 +65,12 @@
 
     <section>
       <h2>Text processing</h2>
-      <p>All text comparison is performed <strong>entirely in your browser</strong> using JavaScript. Your text is never
-        uploaded to, stored on, or processed by any server. This is a core privacy feature of diffvoid.com.</p>
+      <p>All text comparison is performed <strong>entirely in your browser</strong> using JavaScript. The page may pass
+        the left and right texts to a same-origin Web Worker, which is a separate browser execution context used to keep
+        heavy work away from the interface thread. This is local inter-thread messaging, not a network request.</p>
+      <p>Your compared text is never uploaded to, stored on, or processed by any server. The worker returns a compact
+        result containing row indexes and numeric change ranges rather than source text or generated HTML. The original
+        text remains in the page only for display, selection, and copying.</p>
     </section>
 
     <section>
@@ -83,7 +87,11 @@
       <p>The project is open source, and you can verify the behavior described above in:</p>
       <ul>
         <li><code>public/index.html</code> - UI structure</li>
-        <li><code>public/script.js</code> - comparison logic (runs entirely client-side)</li>
+        <li><code>public/script.js</code> - input state and client-side orchestration</li>
+        <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
+        <li><code>public/diff-controller.js</code> - worker lifecycle, timeouts, cancellation, and stale-result protection</li>
+        <li><code>public/worker.js</code> - same-origin worker protocol and comparison execution</li>
+        <li><code>public/virtual-diff.js</code> - source-safe virtual rendering, selection, and copy behavior</li>
         <li><code>public/style.css</code> - styling</li>
       </ul>
       <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
