@@ -26,14 +26,63 @@
         const copyCleanRightBtn = document.getElementById('copy-clean-right');
         const progressEl = document.getElementById('progress-indicator');
 
-        const workerEnabled = typeof Worker !== 'undefined';
-        let worker = null;
-        let workerActive = false;
         let chunkBuffer = { left: '', right: '' };
         let chunkBatchCount = 0;
         let isProcessing = false;
         let storedLeftText = '';
         let storedRightText = '';
+        const controller = createDiffController({
+            WorkerCtor: typeof Worker === 'function' ? Worker : null,
+            visibility: document,
+            onStateChange: function (update) {
+                if (update.state === 'starting') {
+                    isProcessing = true;
+                    showProgress('Starting comparison...');
+                } else if (update.state === 'computing') {
+                    showProgress('Computing diff...');
+                } else if (update.state === 'cancelled') {
+                    isProcessing = false;
+                }
+            },
+            onProgress: function (message) {
+                if (message.type === 'diff:chunk') {
+                    chunkBuffer.left += message.leftHtml;
+                    chunkBuffer.right += message.rightHtml;
+                    chunkBatchCount++;
+                    showProgress('Processing ' + message.processed + ' of ' + message.total + ' entries...');
+
+                    if (chunkBatchCount >= 3) flushChunkBuffer();
+                    return;
+                }
+
+                if (message.phase === 'diff') {
+                    showProgress('Computing diff...');
+                }
+            },
+            onResult: function (model) {
+                if (model && model.leftHtml !== undefined && model.rightHtml !== undefined) {
+                    rendering = true;
+                    left.innerHTML = model.leftHtml;
+                    right.innerHTML = model.rightHtml;
+                    rendering = false;
+                } else {
+                    flushChunkBuffer();
+                }
+
+                setCounter(model && Number.isFinite(model.mismatchCount) ? model.mismatchCount : 0);
+                hideProgress();
+                isProcessing = false;
+                updateEmpty(right);
+                updateEmpty(left);
+            },
+            onError: function (error) {
+                resetChunkBuffer();
+                hideCounter();
+                showProgress(error && error.message ? error.message : 'Comparison failed.');
+                isProcessing = false;
+            },
+            syncFallback: computeLegacyResult
+        });
 
         function setCopyButtonVisibility(leftText, rightText) {
             if (copyCleanLeftBtn) {
@@ -55,73 +104,14 @@
             progressEl.style.display = 'none';
         }
 
-        function cancelWorker() {
-            if (worker) {
-                worker.postMessage({ type: 'cancel' });
-                worker.terminate();
-                worker = null;
-            }
-            workerActive = false;
+        function resetChunkBuffer() {
             chunkBuffer = { left: '', right: '' };
             chunkBatchCount = 0;
         }
 
-        function initWorker() {
-            if (!workerEnabled) return null;
-            try {
-                const w = new Worker('worker.js');
-                w.onmessage = handleWorkerMessage;
-                w.onerror = function() {
-                    if (worker !== w) return;
-                    workerActive = false;
-                    worker = null;
-                    hideProgress();
-                    showProgress('Worker failed. Using fallback...');
-                    const lt = storedLeftText;
-                    const rt = storedRightText;
-                    setTimeout(function() {
-                        hideProgress();
-                        compareSync(lt, rt);
-                    }, 1500);
-                };
-                return w;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function handleWorkerMessage(e) {
-            const { type, leftHtml, rightHtml, processed, total, mismatchCount, message } = e.data;
-            if (type === 'chunk') {
-                chunkBuffer.left += leftHtml;
-                chunkBuffer.right += rightHtml;
-                chunkBatchCount++;
-
-                showProgress('Processing ' + processed + ' of ' + total + ' entries...');
-
-                if (chunkBatchCount >= 3) {
-                    flushChunkBuffer();
-                }
-            } else if (type === 'done') {
-                flushChunkBuffer();
-                setCounter(mismatchCount);
-                hideProgress();
-                workerActive = false;
-                isProcessing = false;
-
-                updateEmpty(right);
-                updateEmpty(left);
-            } else if (type === 'cancelled') {
-                hideProgress();
-                workerActive = false;
-                isProcessing = false;
-            } else if (type === 'computing') {
-                showProgress('Computing diff...');
-            } else if (type === 'error') {
-                cancelWorker();
-                showProgress(message || 'Comparison failed.');
-                isProcessing = false;
-            }
+        function cancelComparison(invalidate) {
+            controller.cancel({ invalidate: invalidate !== false });
+            resetChunkBuffer();
         }
 
         function flushChunkBuffer() {
@@ -130,8 +120,7 @@
             left.insertAdjacentHTML('beforeend', chunkBuffer.left);
             right.insertAdjacentHTML('beforeend', chunkBuffer.right);
             rendering = false;
-            chunkBuffer = { left: '', right: '' };
-            chunkBatchCount = 0;
+            resetChunkBuffer();
         }
 
         const toggle = document.getElementById('theme-toggle');
@@ -140,7 +129,7 @@
         const clearBtn = document.getElementById('clear-button');
         if (clearBtn) {
             clearBtn.addEventListener('click', function () {
-                cancelWorker();
+                cancelComparison(true);
                 storedLeftText = '';
                 storedRightText = '';
                 left.innerHTML = '';
@@ -215,7 +204,7 @@
             setCopyButtonVisibility(lt, rt);
 
             if (!lt.length || !rt.length) {
-                cancelWorker();
+                cancelComparison(true);
                 rendering = true;
                 if (lt.length) {
                     left.textContent = lt;
@@ -241,61 +230,41 @@
 
             const validation = validateDiffInput(lt, rt);
             if (!validation.ok) {
-                cancelWorker();
+                cancelComparison(true);
                 hideCounter();
                 showProgress(validation.message);
                 return;
             }
 
             const estimatedLines = validation.estimatedLines;
+            cancelComparison(false);
+            rendering = true;
+            left.innerHTML = '';
+            right.innerHTML = '';
+            rendering = false;
+            hideCounter();
 
-            if (workerEnabled && estimatedLines > 100) {
-                cancelWorker();
-                rendering = true;
-                left.innerHTML = '';
-                right.innerHTML = '';
-                rendering = false;
-                hideCounter();
-
-                worker = initWorker();
-                if (!worker) {
-                    compareSync(lt, rt);
-                    return;
-                }
-
-                workerActive = true;
-                isProcessing = true;
-                showProgress('Starting comparison...');
-                worker.postMessage({ type: 'diff', left: lt, right: rt });
-            } else {
-                cancelWorker();
-                compareSync(lt, rt);
-            }
+            controller.start({
+                left: lt,
+                right: rt,
+                isSyncSafe: estimatedLines <= 100,
+                syncFallback: computeLegacyResult
+            });
         }
 
-        function compareSync(lt, rt) {
+        function computeLegacyResult(lt, rt) {
             let diffResult;
-            try {
-                diffResult = computeLineDiff(lt, rt);
-            } catch (err) {
-                hideCounter();
-                showProgress(err && err.message ? err.message : 'Comparison failed.');
-                return;
-            }
+            diffResult = computeLineDiff(lt, rt);
             const rightHtml = buildPanelHtml(diffResult, 'right');
             const leftHtml = buildPanelHtml(diffResult, 'left');
             const mismatchCount = countDifferenceRows(diffResult);
 
-            setCounter(mismatchCount);
-            hideProgress();
-
-            rendering = true;
-            right.innerHTML = rightHtml;
-            left.innerHTML = leftHtml;
-            rendering = false;
-
-            updateEmpty(right);
-            updateEmpty(left);
+            return {
+                version: 1,
+                leftHtml: leftHtml,
+                rightHtml: rightHtml,
+                mismatchCount: mismatchCount
+            };
         }
 
         function preventTyping(e) {
@@ -500,5 +469,9 @@
 
         updateEmpty(left);
         updateEmpty(right);
+
+        window.addEventListener('beforeunload', function () {
+            controller.destroy();
+        });
     });
 })();

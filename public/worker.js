@@ -5,26 +5,41 @@
 importScripts('shared-diff.js');
 
 const CHUNK_SIZE = 50;
-let cancelled = false;
 
 self.onmessage = function (e) {
-    if (e.data.type === 'cancel') {
-        cancelled = true;
+    const request = e.data || {};
+    if (request.type !== 'diff:start') return;
+
+    const { jobId, inputRevision, left, right } = request;
+
+    function post(message) {
+        self.postMessage(Object.assign({
+            jobId: jobId,
+            inputRevision: inputRevision
+        }, message));
+    }
+
+    if (request.protocolVersion !== 2) {
+        post({
+            type: 'diff:error',
+            code: 'UNSUPPORTED_PROTOCOL',
+            message: 'Unsupported diff worker protocol.'
+        });
         return;
     }
 
-    if (e.data.type !== 'diff') return;
-
-    cancelled = false;
-    const { left, right } = e.data;
-
-    self.postMessage({ type: 'computing' });
+    post({ type: 'diff:started' });
+    post({ type: 'diff:progress', phase: 'diff', processed: 0, total: 1 });
 
     let diffResult;
     try {
         diffResult = computeLineDiff(left, right);
     } catch (err) {
-        self.postMessage({ type: 'error', message: err && err.message ? err.message : 'Comparison failed.' });
+        post({
+            type: 'diff:error',
+            code: 'COMPARISON_FAILED',
+            message: err && err.message ? err.message : 'Comparison failed.'
+        });
         return;
     }
 
@@ -33,17 +48,12 @@ self.onmessage = function (e) {
 
     let startIdx = 0;
     while (startIdx < totalEntries) {
-        if (cancelled) {
-            self.postMessage({ type: 'cancelled' });
-            return;
-        }
-
         const endIdx = Math.min(startIdx + CHUNK_SIZE, totalEntries);
         const leftChunk = buildPanelHtmlRange(diffResult, 'left', startIdx, endIdx);
         const rightChunk = buildPanelHtmlRange(diffResult, 'right', startIdx, endIdx);
 
-        self.postMessage({
-            type: 'chunk',
+        post({
+            type: 'diff:chunk',
             leftHtml: leftChunk.html,
             rightHtml: rightChunk.html,
             startIdx: startIdx,
@@ -55,11 +65,12 @@ self.onmessage = function (e) {
         startIdx = leftChunk.endIdx;
     }
 
-    if (!cancelled) {
-        self.postMessage({
-            type: 'done',
+    post({
+        type: 'diff:result',
+        model: {
+            version: 1,
             mismatchCount: mismatchCount,
             totalLines: diffResult.rightLines.length
-        });
-    }
+        }
+    });
 };
