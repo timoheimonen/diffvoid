@@ -68,22 +68,45 @@
         </div>
         <div class="copy-clean-container">
             <div class="mismatch-counter" id="mismatch-counter" style="display: none;"></div>
-            <div id="progress-indicator" class="progress-indicator" style="display: none;"></div>
-            <button id="copy-clean-left" class="copy-clean-btn" title="Copy left text without invisible characters">
+            <div id="progress-indicator" class="progress-indicator" role="status" aria-live="polite"
+                aria-atomic="true" style="display: none;"></div>
+            <div id="render-notice" class="render-notice" role="status" aria-live="polite" aria-atomic="true"
+                style="display: none;"></div>
+            <button id="copy-left" class="copy-clean-btn copy-source-btn" aria-label="Copy all left text"
+                title="Copy all left text" hidden disabled aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
-                <span class="copy-label">L</span>
+                <span class="copy-label">Copy L</span>
             </button>
-            <button id="copy-clean-right" class="copy-clean-btn" title="Copy right text without invisible characters">
+            <button id="copy-right" class="copy-clean-btn copy-source-btn" aria-label="Copy all right text"
+                title="Copy all right text" hidden disabled aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
-                <span class="copy-label">R</span>
+                <span class="copy-label">Copy R</span>
+            </button>
+            <button id="copy-clean-left" class="copy-clean-btn" aria-label="Copy left text without invisible characters"
+                title="Copy left text without invisible characters" hidden disabled aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span class="copy-label">Clean L</span>
+            </button>
+            <button id="copy-clean-right" class="copy-clean-btn" aria-label="Copy right text without invisible characters"
+                title="Copy right text without invisible characters" hidden disabled aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span class="copy-label">Clean R</span>
             </button>
         </div>
         <div class="header-actions">
@@ -115,11 +138,13 @@
         </div>
     </header>
     <main aria-label="Text comparison workspace">
-        <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" data-placeholder="To this...">
+        <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" aria-label="Left text"
+            aria-multiline="true" data-placeholder="To this...">
         </div>
-        <div class="divider" id="divider"></div>
+        <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize comparison panes"
+            aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50"></div>
         <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
-            data-placeholder="Compare this..."></div>
+            aria-label="Right text" aria-multiline="true" data-placeholder="Compare this..."></div>
     </main>
     <section class="seo-content" aria-labelledby="seo-title">
         <h2 id="seo-title">Compare text online with privacy-first diffing</h2>
@@ -134,6 +159,7 @@
     </section>
     <script src="shared-diff.js"></script>
     <script src="diff-controller.js"></script>
+    <script src="virtual-diff.js"></script>
     <script src="script.js"></script>
 </body>
 

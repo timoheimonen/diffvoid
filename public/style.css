@@ -117,6 +117,20 @@ header h1 {
     opacity: 0.8;
 }
 
+.render-notice {
+    font-size: 12px;
+    font-weight: 600;
+    color: #92400e;
+    background-color: rgba(245, 158, 11, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    padding: 5px 9px;
+    border-radius: 4px;
+}
+
+[data-theme="dark"] .render-notice {
+    color: #fbbf24;
+}
+
 .copy-clean-container {
     display: flex;
     align-items: center;
@@ -141,6 +155,10 @@ header h1 {
     pointer-events: none;
 }
 
+.copy-clean-btn[hidden] {
+    display: none;
+}
+
 .copy-clean-btn.visible {
     opacity: 1;
     pointer-events: auto;
@@ -149,6 +167,15 @@ header h1 {
 .copy-clean-btn:hover {
     background: var(--toggle-hover);
     border-color: var(--border-focus);
+}
+
+.copy-clean-btn:focus-visible,
+.icon-button:focus-visible,
+.divider:focus-visible,
+.text-field.diff-mode:focus-visible,
+.diff-preview-button:focus-visible {
+    outline: 2px solid var(--diff-match);
+    outline-offset: 2px;
 }
 
 .copy-clean-btn svg {
@@ -357,6 +384,112 @@ body.resizing .diff-gutter {
     min-height: 1.6em;
 }
 
+.text-field.diff-mode {
+    --diff-row-height: 21px;
+    padding: 0;
+    line-height: var(--diff-row-height);
+    overflow-x: scroll;
+    overflow-y: scroll;
+    overflow-anchor: none;
+    scrollbar-gutter: stable;
+    white-space: pre;
+    word-break: normal;
+    cursor: default;
+    user-select: none;
+}
+
+.text-field.diff-mode::before {
+    display: none;
+}
+
+.diff-mode .diff-spacer-before,
+.diff-mode .diff-spacer-after {
+    width: 1px;
+    min-height: 0;
+    pointer-events: none;
+}
+
+.diff-mode .diff-window {
+    width: max-content;
+    min-width: 100%;
+}
+
+.diff-mode .diff-line {
+    width: max-content;
+    min-width: 100%;
+    height: var(--diff-row-height);
+    min-height: var(--diff-row-height);
+    line-height: var(--diff-row-height);
+    margin: 0;
+    padding: 0;
+    white-space: pre;
+}
+
+.diff-mode .diff-gutter {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    flex: 0 0 3.4rem;
+    width: 3.4rem;
+    height: var(--diff-row-height);
+    line-height: var(--diff-row-height);
+    margin-right: 0.6rem;
+    padding-right: 0.45rem;
+    background-color: var(--field-bg);
+}
+
+.text-field.diff-mode:focus .diff-gutter {
+    background-color: var(--bg-color);
+}
+
+.diff-mode .diff-content {
+    flex: 0 0 auto;
+    min-width: calc(100% - 4rem);
+    height: var(--diff-row-height);
+    line-height: var(--diff-row-height);
+    white-space: pre;
+    word-break: normal;
+}
+
+.diff-logical-selection,
+.diff-line-selected .diff-content {
+    background-color: rgba(37, 99, 235, 0.22);
+}
+
+[data-theme="dark"] .diff-logical-selection,
+[data-theme="dark"] .diff-line-selected .diff-content {
+    background-color: rgba(96, 165, 250, 0.28);
+}
+
+.diff-content-preview {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.diff-preview-ellipsis {
+    color: var(--diff-gutter-color);
+    padding: 0 0.35rem;
+    user-select: none;
+}
+
+.diff-preview-button {
+    width: 19px;
+    height: 19px;
+    line-height: 17px;
+    margin: 1px 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--toggle-bg);
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+.diff-preview-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
 .invisible-char {
     display: inline-block;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -542,6 +675,22 @@ body.resizing .diff-gutter {
 }
 
 @media (max-width: 900px) {
+    header {
+        align-items: flex-start;
+        gap: 8px;
+        padding: 0.75rem;
+    }
+
+    .copy-clean-container {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .copy-clean-btn {
+        padding: 4px 6px;
+    }
+
     .seo-content {
         padding: 0.75rem 0.85rem 0.85rem;
     }
@@ -554,5 +703,41 @@ body.resizing .diff-gutter {
     .seo-links a {
         font-size: 10px;
         line-height: 1.45;
+    }
+}
+
+@media (max-width: 600px) {
+    header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+    }
+
+    .copy-clean-container {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        margin: 0;
+    }
+
+    .header-actions {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .icon-button {
+        width: 38px;
+        height: 38px;
+    }
+
+    .copy-clean-btn svg {
+        display: none;
+    }
+
+    .text-field {
+        padding: 0.75rem;
+    }
+
+    .text-field.is-empty::before {
+        top: 0.75rem;
+        left: 0.75rem;
     }
 }

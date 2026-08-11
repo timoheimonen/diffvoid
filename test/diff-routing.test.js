@@ -37,8 +37,27 @@ test('an accepted 20-line near-limit input is classified as worker-only before l
     assert.match(classification.reason, /character|cost|line/i);
 
     const mainScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'script.js'), 'utf8');
-    assert.match(mainScript, /scanDiffInput\(lt, rt\)/);
+    assert.match(mainScript, /scanDiffInput\(leftText, rightText\)/);
     assert.match(mainScript, /isSyncSafe:\s*classification\.isSyncSafe/);
     assert.doesNotMatch(mainScript, /\bcomputeLineDiff\s*\(/);
-    assert.doesNotMatch(mainScript, /\bvalidateDiffInput\s*\(lt, rt\)/);
+    assert.doesNotMatch(mainScript, /\bvalidateDiffInput\s*\(/);
+});
+
+test('result-only copy controls are genuinely hidden from focus and accessibility APIs', function () {
+    const publicDir = path.join(__dirname, '..', 'public');
+    const markup = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
+    const script = fs.readFileSync(path.join(publicDir, 'script.js'), 'utf8');
+    const styles = fs.readFileSync(path.join(publicDir, 'style.css'), 'utf8');
+
+    for (const id of ['copy-left', 'copy-right', 'copy-clean-left', 'copy-clean-right']) {
+        const button = markup.match(new RegExp('<button\\s+id="' + id + '"[^>]*>', 'i'));
+        assert.ok(button, id + ' must exist');
+        assert.match(button[0], /\shidden(?:\s|>)/i);
+        assert.match(button[0], /\sdisabled(?:\s|>)/i);
+        assert.match(button[0], /aria-hidden="true"/i);
+    }
+    assert.match(script, /button\.hidden\s*=\s*!isVisible/);
+    assert.match(script, /button\.disabled\s*=\s*!isVisible/);
+    assert.match(script, /button\.removeAttribute\(['"]aria-hidden['"]\)/);
+    assert.match(styles, /\.copy-clean-btn\[hidden\]\s*\{[^}]*display:\s*none/s);
 });
