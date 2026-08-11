@@ -28,12 +28,7 @@
             : null;
         const now = typeof timerSource.now === 'function'
             ? timerSource.now.bind(timerSource)
-            : function () {
-                if (root.performance && typeof root.performance.now === 'function') {
-                    return root.performance.now();
-                }
-                return Date.now();
-            };
+            : root.performance.now.bind(root.performance);
 
         if (!setTimer || !clearTimer) {
             throw new TypeError('Diff controller requires setTimeout and clearTimeout timer functions.');
@@ -43,7 +38,7 @@
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : noop;
         const onResult = typeof options.onResult === 'function' ? options.onResult : noop;
         const onError = typeof options.onError === 'function' ? options.onError : noop;
-        const defaultSyncFallback = typeof options.syncFallback === 'function' ? options.syncFallback : null;
+        const syncFallback = typeof options.syncFallback === 'function' ? options.syncFallback : null;
         const workerUrl = options.workerUrl || DEFAULT_WORKER_URL;
         const startupTimeoutMs = normalizeTimeout(options.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS);
         const hardTimeoutMs = normalizeTimeout(options.hardTimeoutMs, DEFAULT_HARD_TIMEOUT_MS);
@@ -254,10 +249,6 @@
         }
 
         function runCreationFallback(job, request, creationError) {
-            const syncFallback = typeof request.syncFallback === 'function'
-                ? request.syncFallback
-                : defaultSyncFallback;
-
             if (!request.isSyncSafe || !syncFallback) {
                 failJob(job, 'WORKER_UNAVAILABLE', WORKER_REQUIRED_MESSAGE);
                 return;
@@ -432,8 +423,6 @@
         return {
             start: start,
             cancel: cancel,
-            invalidate: function () { return cancel({ invalidate: true, reason: 'input-changed' }); },
-            setVisibility: setVisibility,
             getState: getState,
             destroy: destroy
         };
@@ -444,30 +433,17 @@
     }
 
     function readHidden(source) {
-        if (!source) return false;
-        if (typeof source.isHidden === 'function') return !!source.isHidden();
-        return !!source.hidden;
+        return !!(source && source.hidden);
     }
 
     function subscribeToVisibility(source, listener) {
-        if (!source) return null;
-
-        if (typeof source.subscribe === 'function') {
-            const unsubscribe = source.subscribe(listener);
-            return typeof unsubscribe === 'function' ? unsubscribe : null;
-        }
-
-        if (typeof source.addEventListener === 'function') {
-            source.addEventListener('visibilitychange', listener);
-            return function () {
-                if (typeof source.removeEventListener === 'function') {
-                    source.removeEventListener('visibilitychange', listener);
-                }
-            };
-        }
-
-        return null;
+        if (!source || typeof source.addEventListener !== 'function'
+            || typeof source.removeEventListener !== 'function') return null;
+        source.addEventListener('visibilitychange', listener);
+        return function () {
+            source.removeEventListener('visibilitychange', listener);
+        };
     }
 
     root.createDiffController = createDiffController;
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+})(globalThis);

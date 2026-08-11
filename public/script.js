@@ -3,21 +3,7 @@
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
 (function () {
-    function initTheme() {
-        if (window.diffvoidTheme && typeof window.diffvoidTheme.initTheme === 'function') {
-            window.diffvoidTheme.initTheme();
-        }
-    }
-
-    function toggleTheme() {
-        if (window.diffvoidTheme && typeof window.diffvoidTheme.toggleTheme === 'function') {
-            window.diffvoidTheme.toggleTheme();
-        }
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
-        initTheme();
-
         const panes = {
             left: document.getElementById('input-left'),
             right: document.getElementById('input-right')
@@ -45,8 +31,6 @@
                 left: panes.left.textContent || '',
                 right: panes.right.textContent || ''
             },
-            model: null,
-            selection: null,
             mode: 'input'
         };
 
@@ -56,10 +40,7 @@
             document: document,
             requestAnimationFrame: window.requestAnimationFrame.bind(window),
             cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-            stripInvisibleCharacters: stripInvisibleCharacters,
-            onSelectionChange: function (selection) {
-                state.selection = selection;
-            },
+            stripInvisibleCharacters: window.DiffCore.stripInvisibleCharacters,
             onRenderingReduced: function (message) {
                 if (!renderNotice) return;
                 renderNotice.textContent = message;
@@ -78,11 +59,9 @@
                 }
             },
             onProgress: function (message) {
-                if (message.phase === 'validation') {
-                    showProgress('Validating input...');
-                } else if (message.phase === 'lines' || message.phase === 'line-diff') {
+                if (message.phase === 'line-diff') {
                     showProgress('Comparing lines...');
-                } else if (message.phase === 'details' || message.phase === 'intraline') {
+                } else if (message.phase === 'intraline') {
                     showProgress('Computing detailed changes...');
                 }
             },
@@ -146,7 +125,7 @@
         function showResultControls() {
             for (const side of ['left', 'right']) {
                 setButtonVisible(copyButtons[side], true);
-                setButtonVisible(cleanCopyButtons[side], hasInvisibleCharacters(state.sources[side]));
+                setButtonVisible(cleanCopyButtons[side], window.DiffCore.hasInvisibleCharacters(state.sources[side]));
             }
         }
 
@@ -157,8 +136,6 @@
         }
 
         function resetToInput() {
-            state.model = null;
-            state.selection = null;
             state.mode = 'input';
             view.resetToInput(state.sources);
             hideResultControls();
@@ -168,8 +145,6 @@
 
         function showResult(model) {
             try {
-                state.model = model;
-                state.selection = null;
                 state.mode = 'diff';
                 hideRenderNotice();
                 view.setResult({ sources: state.sources, model: model, selection: null });
@@ -193,7 +168,9 @@
         }
 
         function computeModel(leftText, rightText) {
-            return computeDiffModel(leftText, rightText, { workBudget: createDiffWorkBudget() });
+            return window.DiffCore.computeDiffModel(leftText, rightText, {
+                workBudget: window.DiffCore.createDiffWorkBudget()
+            });
         }
 
         function compare() {
@@ -208,8 +185,8 @@
                 return;
             }
 
-            const scan = scanDiffInput(leftText, rightText);
-            const validation = validateScannedDiffInput(scan);
+            const scan = window.DiffCore.scanDiffInput(leftText, rightText);
+            const validation = window.DiffCore.validateScannedDiffInput(scan);
             if (!validation.ok) {
                 controller.cancel({ invalidate: true, reason: 'invalid-input' });
                 resetToInput();
@@ -218,15 +195,14 @@
                 return;
             }
 
-            const classification = classifyDiffWork(leftText, rightText, scan);
+            const classification = window.DiffCore.classifyDiffWork(leftText, rightText, scan);
             hideCounter();
             hideResultControls();
             hideRenderNotice();
             controller.start({
                 left: leftText,
                 right: rightText,
-                isSyncSafe: classification.isSyncSafe,
-                syncFallback: computeModel
+                isSyncSafe: classification.isSyncSafe
             });
         }
 
@@ -264,7 +240,7 @@
         bindInput('right');
 
         const themeToggle = document.getElementById('theme-toggle');
-        if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+        if (themeToggle) themeToggle.addEventListener('click', window.diffvoidTheme.toggleTheme);
 
         const clearButton = document.getElementById('clear-button');
         if (clearButton) {
@@ -279,33 +255,13 @@
             });
         }
 
-        function fallbackCopy(text, side, button) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.left = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
+        async function copyText(text, side, button) {
             try {
-                document.execCommand('copy');
+                await navigator.clipboard.writeText(text);
                 showCopyFeedback(button);
             } catch (err) {
                 console.error('Failed to copy ' + side + ' text:', err);
             }
-            document.body.removeChild(textarea);
-        }
-
-        async function copyText(text, side, button) {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                try {
-                    await navigator.clipboard.writeText(text);
-                    showCopyFeedback(button);
-                    return;
-                } catch (err) {
-                    // The textarea path handles browsers that reject Clipboard API writes.
-                }
-            }
-            fallbackCopy(text, side, button);
         }
 
         function showCopyFeedback(button) {
@@ -324,12 +280,16 @@
             }
             if (cleanCopyButtons[side]) {
                 cleanCopyButtons[side].addEventListener('click', function () {
-                    copyText(stripInvisibleCharacters(state.sources[side]), side, cleanCopyButtons[side]);
+                    copyText(
+                        window.DiffCore.stripInvisibleCharacters(state.sources[side]),
+                        side,
+                        cleanCopyButtons[side]
+                    );
                 });
             }
         }
 
-        let isDragging = false;
+        let activePointerId = null;
 
         function setDividerPercent(percent) {
             const value = Math.max(15, Math.min(85, percent));
@@ -343,17 +303,19 @@
         }
 
         function startDragging(event) {
-            isDragging = true;
+            if (event.isPrimary === false || event.button !== 0 || activePointerId !== null) return;
+            activePointerId = event.pointerId;
             document.body.classList.add('resizing');
             divider.classList.add('dragging');
+            updateSplitFromClientX(event.clientX);
             event.preventDefault();
         }
 
-        function stopDragging() {
-            if (!isDragging) return;
-            isDragging = false;
+        function stopDragging(event) {
+            if (event.pointerId !== activePointerId) return;
+            activePointerId = null;
             document.body.classList.remove('resizing');
-            if (divider) divider.classList.remove('dragging');
+            divider.classList.remove('dragging');
         }
 
         function updateSplitFromClientX(clientX) {
@@ -362,8 +324,7 @@
         }
 
         if (divider) {
-            divider.addEventListener('mousedown', startDragging);
-            divider.addEventListener('touchstart', startDragging, { passive: false });
+            divider.addEventListener('pointerdown', startDragging);
             divider.addEventListener('dblclick', resetDivider);
             divider.addEventListener('keydown', function (event) {
                 const current = Number(divider.getAttribute('aria-valuenow')) || 50;
@@ -376,14 +337,11 @@
             });
         }
 
-        document.addEventListener('mousemove', function (event) {
-            if (isDragging) updateSplitFromClientX(event.clientX);
+        document.addEventListener('pointermove', function (event) {
+            if (event.pointerId === activePointerId) updateSplitFromClientX(event.clientX);
         });
-        document.addEventListener('touchmove', function (event) {
-            if (isDragging && event.touches[0]) updateSplitFromClientX(event.touches[0].clientX);
-        }, { passive: false });
-        document.addEventListener('mouseup', stopDragging);
-        document.addEventListener('touchend', stopDragging);
+        document.addEventListener('pointerup', stopDragging);
+        document.addEventListener('pointercancel', stopDragging);
 
         window.addEventListener('beforeunload', function () {
             controller.destroy();

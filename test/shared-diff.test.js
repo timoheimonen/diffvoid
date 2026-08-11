@@ -4,66 +4,42 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadSharedDiff() {
+function loadSharedDiff(contextOverrides) {
     const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'shared-diff.js'), 'utf8');
-    const context = { Intl };
+    const context = Object.assign({ Intl: Intl }, contextOverrides);
+    const closing = '\n})(globalThis);';
+    const closingIndex = code.lastIndexOf(closing);
+    assert.notEqual(closingIndex, -1, 'shared diff must use the canonical IIFE wrapper');
+    const testExports = `
+root.__DiffCoreTest = Object.freeze({
+    validateDiffInput: validateDiffInput,
+    computeMyersRanges: computeMyersRanges,
+    splitDiffUnits: splitDiffUnits,
+    computeIntralineChangeRanges: computeIntralineChangeRanges,
+    DIFF_WORK_BUDGET_DEFAULTS: DIFF_WORK_BUDGET_DEFAULTS,
+    DIFF_MODEL_LIMITS: DIFF_MODEL_LIMITS,
+    SYNC_DIFF_LIMITS: SYNC_DIFF_LIMITS,
+    DIFF_DEADLINE_ERROR_CODE: DIFF_DEADLINE_ERROR_CODE,
+    DIFF_MYERS_BUDGET_ERROR_CODE: DIFF_MYERS_BUDGET_ERROR_CODE,
+    computeAlignedRowActions: computeAlignedRowActions,
+    createAlignmentContext: createAlignmentContext,
+    createFullAlignmentLayout: createFullAlignmentLayout,
+    createBandedAlignmentLayout: createBandedAlignmentLayout,
+    selectAlignmentLayout: selectAlignmentLayout,
+    runAlignmentDp: runAlignmentDp,
+    quantizedModifiedLineScore: quantizedModifiedLineScore,
+    ALIGNMENT_CONSTANTS: Object.freeze({
+        scoreScale: ALIGN_SCORE_SCALE,
+        fullMaxCells: ALIGN_FULL_MAX_CELLS,
+        bandMaxCells: ALIGN_BAND_MAX_CELLS,
+        scoreWorkMax: ALIGN_SCORE_WORK_MAX,
+        preferredBand: ALIGN_PREFERRED_BAND
+    })
+});`;
+    const instrumentedCode = code.slice(0, closingIndex) + testExports + code.slice(closingIndex);
     vm.createContext(context);
-    vm.runInContext(code + `
-this.hasInvisibleCharacters = hasInvisibleCharacters;
-this.hasConfusableCharacters = hasConfusableCharacters;
-this.stripInvisibleCharacters = stripInvisibleCharacters;
-this.validateDiffInput = validateDiffInput;
-this.computeMyersRanges = computeMyersRanges;
-this.scanDiffInput = typeof scanDiffInput === 'function' ? scanDiffInput : undefined;
-this.classifyDiffWork = typeof classifyDiffWork === 'function' ? classifyDiffWork : undefined;
-this.computeDiffModel = typeof computeDiffModel === 'function' ? computeDiffModel : undefined;
-this.splitDiffUnitsV2 = typeof splitDiffUnits === 'function' ? splitDiffUnits : undefined;
-this.computeIntralineChangeRanges = typeof computeIntralineChangeRanges === 'function'
-    ? computeIntralineChangeRanges
-    : undefined;
-this.createDiffWorkBudget = typeof createDiffWorkBudget === 'function' ? createDiffWorkBudget : undefined;
-this.DIFF_WORK_BUDGET_DEFAULTS = typeof DIFF_WORK_BUDGET_DEFAULTS === 'object'
-    ? DIFF_WORK_BUDGET_DEFAULTS
-    : undefined;
-this.DIFF_MODEL_LIMITS = typeof DIFF_MODEL_LIMITS === 'object' ? DIFF_MODEL_LIMITS : undefined;
-this.SYNC_DIFF_LIMITS = typeof SYNC_DIFF_LIMITS === 'object' ? SYNC_DIFF_LIMITS : undefined;
-this.validateScannedDiffInput = typeof validateScannedDiffInput === 'function'
-    ? validateScannedDiffInput
-    : undefined;
-this.DIFF_DEADLINE_ERROR_CODE = typeof DIFF_DEADLINE_ERROR_CODE === 'string'
-    ? DIFF_DEADLINE_ERROR_CODE
-    : undefined;
-this.DIFF_MYERS_BUDGET_ERROR_CODE = typeof DIFF_MYERS_BUDGET_ERROR_CODE === 'string'
-    ? DIFF_MYERS_BUDGET_ERROR_CODE
-    : undefined;
-this.computeAlignedRowActions = typeof computeAlignedRowActions === 'function'
-    ? computeAlignedRowActions
-    : undefined;
-this.createAlignmentContext = typeof createAlignmentContext === 'function'
-    ? createAlignmentContext
-    : undefined;
-this.createFullAlignmentLayout = typeof createFullAlignmentLayout === 'function'
-    ? createFullAlignmentLayout
-    : undefined;
-this.createBandedAlignmentLayout = typeof createBandedAlignmentLayout === 'function'
-    ? createBandedAlignmentLayout
-    : undefined;
-this.selectAlignmentLayout = typeof selectAlignmentLayout === 'function'
-    ? selectAlignmentLayout
-    : undefined;
-this.runAlignmentDp = typeof runAlignmentDp === 'function' ? runAlignmentDp : undefined;
-this.quantizedModifiedLineScore = typeof quantizedModifiedLineScore === 'function'
-    ? quantizedModifiedLineScore
-    : undefined;
-this.ALIGNMENT_CONSTANTS = {
-    scoreScale: typeof ALIGN_SCORE_SCALE === 'number' ? ALIGN_SCORE_SCALE : undefined,
-    fullMaxCells: typeof ALIGN_FULL_MAX_CELLS === 'number' ? ALIGN_FULL_MAX_CELLS : undefined,
-    bandMaxCells: typeof ALIGN_BAND_MAX_CELLS === 'number' ? ALIGN_BAND_MAX_CELLS : undefined,
-    scoreWorkMax: typeof ALIGN_SCORE_WORK_MAX === 'number' ? ALIGN_SCORE_WORK_MAX : undefined,
-    preferredBand: typeof ALIGN_PREFERRED_BAND === 'number' ? ALIGN_PREFERRED_BAND : undefined
-};
-`, context);
-    return context;
+    vm.runInContext(instrumentedCode, context);
+    return Object.assign({}, context.DiffCore, context.__DiffCoreTest);
 }
 
 const diff = loadSharedDiff();
@@ -94,16 +70,58 @@ function reconstructedFromModel(model, leftSource, rightSource) {
     return { left: left.join('\n'), right: right.join('\n') };
 }
 
-function assertNoLegacyModelKeys(value) {
-    if (!value || typeof value !== 'object') return;
-
-    const forbidden = new Set([
-        'left', 'right', 'leftLines', 'rightLines', 'diff',
-        'leftChars', 'chars', 'leftHtml', 'rightHtml', 'html'
+function assertCurrentModelSchema(model) {
+    assert.deepEqual(Object.keys(model).sort(), [
+        'changeBounds',
+        'leftLineStarts',
+        'mismatchCount',
+        'rightLineStarts',
+        'rows',
+        'stats',
+        'version'
     ]);
-    for (const key of Object.keys(value)) {
-        assert.equal(forbidden.has(key), false, 'unexpected legacy/source key: ' + key);
-        assertNoLegacyModelKeys(value[key]);
+
+    const rowKeys = {
+        match: ['leftLineIndex', 'rightLineIndex', 'type'],
+        missing: ['leftLineIndex', 'type'],
+        added: ['rightLineIndex', 'type'],
+        modified: [
+            'detailMode',
+            'leftLineIndex',
+            'leftRangeCount',
+            'leftRangeOffset',
+            'rightLineIndex',
+            'rightRangeCount',
+            'rightRangeOffset',
+            'type'
+        ]
+    };
+    const allowedStrings = new Set([
+        'added', 'banded', 'full', 'match', 'missing', 'modified', 'precise', 'whole-line'
+    ]);
+    const pending = [{ value: model, path: 'model' }];
+
+    for (let rowIndex = 0; rowIndex < model.rows.length; rowIndex++) {
+        const row = model.rows[rowIndex];
+        assert.ok(Object.hasOwn(rowKeys, row.type), 'rows[' + rowIndex + '] has an unknown type');
+        assert.deepEqual(
+            Object.keys(row).sort(),
+            rowKeys[row.type].slice().sort(),
+            'rows[' + rowIndex + '] has an unexpected shape'
+        );
+    }
+
+    while (pending.length > 0) {
+        const current = pending.pop();
+        const value = current.value;
+        if (typeof value === 'string') {
+            assert.ok(allowedStrings.has(value), current.path + ' contains an unexpected string');
+            continue;
+        }
+        if (!value || typeof value !== 'object' || ArrayBuffer.isView(value)) continue;
+        for (const key of Object.keys(value)) {
+            pending.push({ value: value[key], path: current.path + '.' + key });
+        }
     }
 }
 
@@ -449,14 +467,34 @@ test('compact ranges keep emoji and combining-mark edits as single graphemes', f
     assert.deepEqual(Array.from(combining.changeBounds), [3, 5, 3, 4]);
 });
 
+test('grapheme segmentation requires Intl.Segmenter', function () {
+    const withoutSegmenter = loadSharedDiff({ Intl: {} });
+    assert.throws(function () { withoutSegmenter.splitDiffUnits('text'); }, /Intl\.Segmenter/);
+});
+
+test('internal diff stages require their canonical shared execution contexts', function () {
+    assert.throws(
+        function () {
+            diff.computeIntralineChangeRanges('left', 'right', diff.createDiffWorkBudget());
+        },
+        /requires an execution context/
+    );
+    assert.throws(
+        function () {
+            diff.computeAlignedRowActions(['left'], ['right'], 0, 1, 0, 1);
+        },
+        /requires an alignment context/
+    );
+});
+
 test('invisible character detection and clean copy normalization work', function () {
     assert.equal(diff.hasInvisibleCharacters('a\u200Bb'), true);
     assert.equal(diff.stripInvisibleCharacters('a\u200Bb\u00A0c\uFEFF'), 'a b c');
 });
 
 test('confusable characters are detected for routing and visual-skeleton matching', function () {
-    assert.equal(diff.hasConfusableCharacters('Latin A'), false);
-    assert.equal(diff.hasConfusableCharacters('Cyrillic \u0410'), true);
+    assert.equal(diff.scanDiffInput('A', 'A').spanRiskChars, 0);
+    assert.equal(diff.scanDiffInput('\u0410', '\u0410').spanRiskChars, 2);
 
     const model = diff.computeDiffModel('A', '\u0410');
     assert.equal(model.rows[0].type, 'modified');
@@ -494,12 +532,10 @@ test('compact v2 ranges preserve grapheme boundaries and reconstruct both source
     assert.equal(Object.prototype.toString.call(model.changeBounds), '[object Uint32Array]');
     assert.equal(Object.prototype.toString.call(model.leftLineStarts), '[object Uint32Array]');
     assert.equal(Object.prototype.toString.call(model.rightLineStarts), '[object Uint32Array]');
+    assertCurrentModelSchema(model);
 
     const rebuilt = { left: [], right: [] };
     for (const row of model.rows) {
-        assert.equal(Object.hasOwn(row, 'leftChars'), false);
-        assert.equal(Object.hasOwn(row, 'chars'), false);
-
         if (Number.isInteger(row.leftLineIndex)) {
             const start = model.leftLineStarts[row.leftLineIndex];
             const end = row.leftLineIndex + 1 < model.leftLineStarts.length
@@ -525,10 +561,10 @@ test('compact v2 ranges preserve grapheme boundaries and reconstruct both source
                 ? model.rightLineStarts[row.rightLineIndex + 1] - 1
                 : right.length;
             const leftBoundaries = new Set(
-                Array.from(diff.splitDiffUnitsV2(left.slice(leftLineStart, leftLineEnd)).boundaries)
+                Array.from(diff.splitDiffUnits(left.slice(leftLineStart, leftLineEnd)).boundaries)
             );
             const rightBoundaries = new Set(
-                Array.from(diff.splitDiffUnitsV2(right.slice(rightLineStart, rightLineEnd)).boundaries)
+                Array.from(diff.splitDiffUnits(right.slice(rightLineStart, rightLineEnd)).boundaries)
             );
 
             for (let i = 0; i < row.leftRangeCount; i++) {
@@ -548,7 +584,7 @@ test('compact v2 ranges preserve grapheme boundaries and reconstruct both source
     assert.equal(rebuilt.right.join('\n'), right);
 });
 
-test('DiffModelV2 uses source-free rows and exact line-start arrays', function () {
+test('DiffModelV2 has the exact compact schema and line-start arrays', function () {
     const cases = [
         ['', ''],
         ['a', 'a\n'],
@@ -560,12 +596,7 @@ test('DiffModelV2 uses source-free rows and exact line-start arrays', function (
     for (const [left, right] of cases) {
         const model = diff.computeDiffModel(left, right);
 
-        assert.equal(Object.hasOwn(model, 'left'), false);
-        assert.equal(Object.hasOwn(model, 'right'), false);
-        assert.equal(Object.hasOwn(model, 'leftLines'), false);
-        assert.equal(Object.hasOwn(model, 'rightLines'), false);
-        assert.equal(Object.hasOwn(model, 'diff'), false);
-        assertNoLegacyModelKeys(model);
+        assertCurrentModelSchema(model);
         assert.deepEqual(reconstructedFromModel(model, left, right), { left, right });
 
         const leftIndexes = Array.from(model.rows)

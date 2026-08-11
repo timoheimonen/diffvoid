@@ -161,6 +161,7 @@ function tagged(type, token, extra) {
 
 test('starts one worker with a tagged v2 request and completes atomically', function () {
     const harness = createHarness();
+    assert.deepEqual(Object.keys(harness.controller).sort(), ['cancel', 'destroy', 'getState', 'start']);
     const token = harness.controller.start({ left: 'left', right: 'right', isSyncSafe: false });
     const worker = FakeWorker.instances[0];
 
@@ -180,9 +181,9 @@ test('starts one worker with a tagged v2 request and completes atomically', func
     assert.equal(harness.controller.getState().activeJob.state, 'computing');
     assert.equal(harness.clock.pendingCount(), 1);
 
-    worker.emit(tagged('diff:progress', token, { phase: 'lines', processed: 1, total: 2 }));
+    worker.emit(tagged('diff:progress', token, { phase: 'line-diff', processed: 1, total: 2 }));
     assert.equal(harness.progress.length, 1);
-    assert.equal(harness.progress[0].message.phase, 'lines');
+    assert.equal(harness.progress[0].message.phase, 'line-diff');
 
     const model = { version: 2 };
     worker.emit(tagged('diff:result', token, { model: model }));
@@ -198,7 +199,7 @@ test('starts one worker with a tagged v2 request and completes atomically', func
     ]);
 });
 
-test('old, wrong-job, wrong-revision, and wrong-worker messages are ignored', function () {
+test('stale, wrong-job, wrong-revision, and wrong-worker messages are ignored', function () {
     const harness = createHarness();
     const a = harness.controller.start({ left: 'a', right: 'A', isSyncSafe: false });
     const workerA = FakeWorker.instances[0];
@@ -299,7 +300,7 @@ test('hard timeout is absolute and progress does not extend it', function () {
 
     worker.emit(tagged('diff:started', token));
     harness.clock.tick(14999);
-    worker.emit(tagged('diff:progress', token, { phase: 'characters', processed: 99, total: 100 }));
+    worker.emit(tagged('diff:progress', token, { phase: 'intraline', processed: 99, total: 100 }));
     assert.equal(harness.errors.length, 0);
 
     harness.clock.tick(1);
@@ -487,49 +488,31 @@ test('only the first terminal outcome can invoke a callback', function () {
     assert.equal(harness.states.filter(function (entry) { return entry.state === 'completed'; }).length, 1);
 });
 
-test('all tagged legacy worker envelopes are ignored before a valid v2 result completes', function () {
-    const legacyMessageFactories = [
-        function (token) { return tagged('computing', token); },
-        function (token) {
-            return tagged('chunk', token, { leftHtml: '<div>a</div>', rightHtml: '<div>b</div>' });
-        },
-        function (token) {
-            return tagged('diff:chunk', token, { leftHtml: '<div>a2</div>', rightHtml: '<div>b2</div>' });
-        },
-        function (token) { return tagged('done', token, { mismatchCount: 1 }); },
-        function (token) {
-            return tagged('error', token, { code: 'LEGACY_ERROR', message: 'legacy failure' });
-        },
-        function (token) { return tagged('cancelled', token); }
-    ];
+test('an unknown tagged message is ignored before a valid result completes', function () {
+    const harness = createHarness();
+    const token = harness.controller.start({ left: 'a', right: 'b', isSyncSafe: false });
+    const worker = FakeWorker.instances[0];
+    worker.emit(tagged('diff:unknown', token));
 
-    for (const createLegacyMessage of legacyMessageFactories) {
-        const harness = createHarness();
-        const token = harness.controller.start({ left: 'a', right: 'b', isSyncSafe: false });
-        const worker = FakeWorker.instances[0];
-        worker.emit(tagged('diff:started', token));
-        worker.emit(createLegacyMessage(token));
+    assert.equal(harness.controller.getState().activeJob.state, 'starting');
+    assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), ['starting']);
+    assert.equal(harness.progress.length, 0);
+    assert.equal(harness.results.length, 0);
+    assert.equal(harness.errors.length, 0);
+    assert.equal(worker.terminated, false);
+    assert.equal(harness.clock.pendingCount(), 2);
 
-        assert.equal(harness.controller.getState().activeJob.state, 'computing');
-        assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), ['starting', 'computing']);
-        assert.equal(harness.progress.length, 0);
-        assert.equal(harness.results.length, 0);
-        assert.equal(harness.errors.length, 0);
-        assert.equal(worker.terminated, false);
-        assert.equal(harness.clock.pendingCount(), 1);
+    worker.emit(tagged('diff:started', token));
+    const model = { version: 2, mismatchCount: 1 };
+    worker.emit(tagged('diff:result', token, { model: model }));
 
-        const model = { version: 2, mismatchCount: 1 };
-        worker.emit(tagged('diff:result', token, { model: model }));
-
-        assert.equal(harness.results.length, 1);
-        assert.equal(harness.results[0].model, model);
-        assert.equal(Object.prototype.hasOwnProperty.call(harness.results[0].meta, 'legacy'), false);
-        assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), [
-            'starting', 'computing', 'completed'
-        ]);
-        assert.equal(worker.terminated, true);
-        assert.equal(harness.clock.pendingCount(), 0);
-    }
+    assert.equal(harness.results.length, 1);
+    assert.equal(harness.results[0].model, model);
+    assert.deepEqual(harness.states.map(function (entry) { return entry.state; }), [
+        'starting', 'computing', 'completed'
+    ]);
+    assert.equal(worker.terminated, true);
+    assert.equal(harness.clock.pendingCount(), 0);
 });
 
 test('destroy terminates active work, removes visibility listener, and prevents reuse', function () {

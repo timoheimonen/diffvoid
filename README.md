@@ -9,7 +9,7 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
 - **100% client-side**: Compared text is processed only by the page and its same-origin Web Worker. It is never sent to a server.
 - **Line-aware Myers diff**: A first-party Myers implementation preserves exact matching-line anchors when lines are inserted or removed.
 - **Bounded row alignment**: Unmatched hunks use deterministic full or banded dynamic programming to pair similar modified lines. If the shared work budget cannot support a reliable pairing, the hunk is conservatively shown as missing and added lines.
-- **Grapheme-aware character diff**: Modified lines are segmented into user-perceived characters when `Intl.Segmenter` is available, then stored as compact UTF-16 change ranges rather than per-character objects.
+- **Grapheme-aware character diff**: Modified lines are segmented into user-perceived characters with `Intl.Segmenter`, then stored as compact UTF-16 change ranges rather than per-character objects.
 - **Invisible character detection**: Zero-width spaces, non-breaking spaces, soft hyphens, directional marks, and other hidden Unicode characters receive visible markers.
 - **Confusable character detection**: Common Greek and Cyrillic homographs that resemble Latin letters receive a marker and an explanatory tooltip.
 - **Exact and clean copying**: Copy L/R returns the complete original source, including unmounted rows and trailing newlines. Clean L/R additionally normalizes detected invisible spacing characters and removes soft hyphens and BOM characters.
@@ -88,7 +88,7 @@ The implementation has no diff library or other runtime dependency.
 ### Verification
 
 ```bash
-npm test       # correctness, protocol, race, routing, virtual DOM, copy, and cleanup checks
+npm test       # correctness, protocol, race, routing, virtual DOM, copy, and architecture checks
 npm run perf   # isolated large-input model and memory checks
 ```
 
@@ -96,7 +96,7 @@ npm run perf   # isolated large-input model and memory checks
 
 ### Browser Compatibility
 
-The interface requires a modern browser with ES6 JavaScript, typed arrays, `requestAnimationFrame`, CSS variables, and Local Storage. Worker-required comparisons additionally need Web Worker support. `Intl.Segmenter` is used when available; the comparison retains a Unicode code-point fallback.
+The interface requires a modern browser with ES6 JavaScript, `Intl.Segmenter` including `Segments.prototype.containing()`, typed arrays, Pointer Events, the Clipboard API, `requestAnimationFrame`, CSS variables, and Local Storage. Worker-required comparisons additionally need Web Worker support.
 
 ## Privacy
 
@@ -125,6 +125,7 @@ public/
 ├── about.html           # About page
 ├── privacy.html         # Privacy policy
 └── tos.html             # Terms of service
+wrangler.jsonc           # Cloudflare static-asset deployment
 scripts/
 └── perf-diff.js         # Isolated 256 MiB performance and memory assertions
 test/
@@ -133,7 +134,7 @@ test/
 ├── diff-routing.test.js
 ├── worker-protocol.test.js
 ├── virtual-diff.test.js
-└── legacy-cleanup.test.js
+└── architecture-invariants.test.js
 ```
 
 ### Running Locally

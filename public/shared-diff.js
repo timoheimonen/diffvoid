@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
+(function (root) {
+    'use strict';
+
 const CONFUSABLE_BASE_CHARS = {
     0x0391: 'A', 0x0392: 'B', 0x0395: 'E', 0x0396: 'Z',
     0x0397: 'H', 0x0399: 'I', 0x039A: 'K', 0x039C: 'M',
@@ -33,15 +36,6 @@ function isInvisibleCode(code) {
 
 function isConfusableCode(code) {
     return !!CONFUSABLE_BASE_CHARS[code];
-}
-
-function hasConfusableCharacters(text) {
-    for (const char of text) {
-        if (isConfusableCode(char.codePointAt(0))) {
-            return true;
-        }
-    }
-    return false;
 }
 
 function hasInvisibleCharacters(text) {
@@ -315,23 +309,14 @@ function splitDiffUnits(text) {
     const units = [];
     const boundaries = [];
 
-    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
-        if (!graphemeSegmenter) {
-            graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-        }
+    if (!graphemeSegmenter) {
+        graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    }
 
-        const segments = graphemeSegmenter.segment(text);
-        for (const item of segments) {
-            boundaries.push(item.index);
-            units.push(item.segment);
-        }
-    } else {
-        let offset = 0;
-        for (const unit of Array.from(text)) {
-            boundaries.push(offset);
-            units.push(unit);
-            offset += unit.length;
-        }
+    const segments = graphemeSegmenter.segment(text);
+    for (const item of segments) {
+        boundaries.push(item.index);
+        units.push(item.segment);
     }
 
     boundaries.push(text.length);
@@ -454,10 +439,7 @@ function createCodedDiffError(code, message) {
 }
 
 function defaultDiffNow() {
-    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-        return performance.now();
-    }
-    return Date.now();
+    return performance.now();
 }
 
 function createDiffExecutionContext(options, workBudget) {
@@ -470,14 +452,6 @@ function createDiffExecutionContext(options, workBudget) {
         now: options && typeof options.now === 'function' ? options.now : defaultDiffNow,
         deadlineWorkSinceCheck: 0
     };
-}
-
-function resolveDiffExecutionContext(options) {
-    if (options && options.executionContext) return options.executionContext;
-    if (options && (options.workBudget || typeof options.deadlineAt === 'number')) {
-        return createDiffExecutionContext(options, options.workBudget);
-    }
-    return null;
 }
 
 function checkDiffDeadline(executionContext, force) {
@@ -724,7 +698,9 @@ function computeMyersRanges(left, right, options) {
     const maxEditDistance = options && typeof options.maxEditDistance === 'number'
         ? options.maxEditDistance
         : DIFF_LIMITS.maxLineEditDistance;
-    const executionContext = resolveDiffExecutionContext(options);
+    const executionContext = options && options.executionContext
+        ? options.executionContext
+        : null;
     const stack = [{ leftStart: 0, leftEnd: left.length, rightStart: 0, rightEnd: right.length }];
     const output = [];
 
@@ -899,8 +875,10 @@ function intralineWholeLineResult() {
 }
 
 function computeIntralineChangeRanges(left, right, workBudget, executionContext) {
+    if (!executionContext) {
+        throw new TypeError('Intraline diff requires an execution context.');
+    }
     const budget = normalizeDiffWorkBudget(workBudget);
-    const execution = executionContext || createDiffExecutionContext({}, budget);
     const leftSplit = splitDiffUnits(left);
     const rightSplit = splitDiffUnits(right);
     const maxEditDistance = Math.min(
@@ -916,7 +894,7 @@ function computeIntralineChangeRanges(left, right, workBudget, executionContext)
     try {
         ranges = computeMyersRanges(leftSplit.units, rightSplit.units, {
             maxEditDistance: maxEditDistance,
-            executionContext: execution
+            executionContext: executionContext
         });
     } catch (err) {
         if (err && err.code === DIFF_DEADLINE_ERROR_CODE) throw err;
@@ -1594,19 +1572,16 @@ function computeAlignedRowActions(
     rightEnd,
     context
 ) {
+    if (!context) {
+        throw new TypeError('Aligned row computation requires an alignment context.');
+    }
     const leftCount = leftEnd - leftStart;
     const rightCount = rightEnd - rightStart;
     if (leftCount === 0 || rightCount === 0) {
         return conservativeAlignmentFallback(leftStart, leftCount, rightStart, rightCount);
     }
 
-    const alignmentContext = context || createAlignmentContext(
-        leftLines,
-        rightLines,
-        createDiffWorkBudget(),
-        null,
-        null
-    );
+    const alignmentContext = context;
     const layout = selectAlignmentLayout(
         leftLines,
         rightLines,
@@ -1981,3 +1956,14 @@ function computeDiffModel(left, right, options) {
         stats: stats
     };
 }
+
+root.DiffCore = Object.freeze({
+    hasInvisibleCharacters: hasInvisibleCharacters,
+    stripInvisibleCharacters: stripInvisibleCharacters,
+    createDiffWorkBudget: createDiffWorkBudget,
+    scanDiffInput: scanDiffInput,
+    validateScannedDiffInput: validateScannedDiffInput,
+    classifyDiffWork: classifyDiffWork,
+    computeDiffModel: computeDiffModel
+});
+})(globalThis);

@@ -26,17 +26,13 @@ self.onmessage = function (event) {
     const deadlineAt = now() + WORKER_INTERNAL_DEADLINE_MS;
 
     postTagged(token, { type: 'diff:started' });
-    postProgress(token, 'diff', 0, 1);
 
     let model;
     try {
-        model = computeDiffModel(request.left, request.right, {
-            workBudget: createDiffWorkBudget(),
+        model = self.DiffCore.computeDiffModel(request.left, request.right, {
+            workBudget: self.DiffCore.createDiffWorkBudget(),
             deadlineAt: deadlineAt,
             now: now,
-            checkDeadline: function () {
-                throwIfDeadlineExceeded(now, deadlineAt);
-            },
             onProgress: function (progress) {
                 forwardProgress(token, progress);
             }
@@ -47,8 +43,6 @@ self.onmessage = function (event) {
         postComputationError(token, err);
         return;
     }
-
-    postProgress(token, 'diff', 1, 1);
 
     const transferList = uniqueModelBuffers(model);
     try {
@@ -84,10 +78,7 @@ function isValidRequest(request) {
 }
 
 function monotonicNow() {
-    if (self.performance && typeof self.performance.now === 'function') {
-        return self.performance.now();
-    }
-    return Date.now();
+    return self.performance.now();
 }
 
 function deadlineError() {
@@ -117,12 +108,12 @@ function postProgress(token, phase, processed, total) {
 }
 
 function forwardProgress(token, progress) {
-    if (!progress || typeof progress !== 'object') return;
+    if (!progress || typeof progress !== 'object'
+        || (progress.phase !== 'line-diff' && progress.phase !== 'intraline')) return;
 
-    const phase = typeof progress.phase === 'string' ? progress.phase : 'diff';
     const processed = finiteProgressNumber(progress.processed, 0);
     const total = finiteProgressNumber(progress.total, 0);
-    postProgress(token, phase, processed, total);
+    postProgress(token, progress.phase, processed, total);
 }
 
 function finiteProgressNumber(value, fallback) {
@@ -132,7 +123,6 @@ function finiteProgressNumber(value, fallback) {
 function postComputationError(token, err) {
     const isDeadline = err && (
         err.code === 'INTERNAL_DEADLINE_EXCEEDED'
-        || err.code === 'DEADLINE_EXCEEDED'
         || err.code === 'DIFF_DEADLINE_EXCEEDED'
     );
     postError(

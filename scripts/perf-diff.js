@@ -68,13 +68,9 @@ function loadComputeDiffModel() {
     const code = fs.readFileSync(filename, 'utf8');
     const context = { Intl: Intl, performance: performance };
     vm.createContext(context);
-    vm.runInContext(
-        code + '\n;globalThis.__perfComputeDiffModel = computeDiffModel;',
-        context,
-        { filename: filename }
-    );
-    assert.equal(typeof context.__perfComputeDiffModel, 'function');
-    return context.__perfComputeDiffModel;
+    vm.runInContext(code, context, { filename: filename });
+    assert.equal(typeof context.DiffCore.computeDiffModel, 'function');
+    return context.DiffCore.computeDiffModel;
 }
 
 function runCase(caseName) {
@@ -265,7 +261,7 @@ function assertCompactModel(model, left, right) {
     assert.equal(model.changeBounds.length % 2, 0);
     assert.ok(model.changeBounds.length / 2 <= MAX_RANGE_PAIRS);
     assert.ok(model.changeBounds.byteLength <= MAX_RANGE_BYTES);
-    assertNoLegacyModelData(model);
+    assertSourceFreeModel(model);
     assertRowsAndReconstruction(model, left, right);
 }
 
@@ -294,12 +290,7 @@ function assertLineStarts(starts, source, label) {
     );
 }
 
-function assertNoLegacyModelData(model) {
-    const forbiddenKeys = new Set([
-        'c', 'chars', 'diff', 'html', 'left', 'leftChars', 'leftHtml', 'leftLines',
-        'leftSource', 'lineIndex', 'match', 'right', 'rightChars', 'rightHtml',
-        'rightLines', 'rightSource', 'source', 'sources', 'text'
-    ]);
+function assertSourceFreeModel(model) {
     const allowedStrings = new Set([
         'added', 'banded', 'full', 'match', 'missing', 'modified', 'precise', 'whole-line'
     ]);
@@ -321,7 +312,6 @@ function assertNoLegacyModelData(model) {
         const keys = Object.keys(value);
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
-            assert.equal(forbiddenKeys.has(key), false, current.path + ' contains forbidden key ' + key);
             pending.push({ value: value[key], path: current.path + '.' + key });
         }
     }

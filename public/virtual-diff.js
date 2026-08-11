@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Timo Heimonen <timo.heimonen@proton.me>
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
+(function (root) {
+    'use strict';
+
 const RENDER_BUDGETS = Object.freeze({
     overscanRows: 24,
     maxMountedRowsPerPane: 200,
@@ -17,25 +20,25 @@ const VIRTUAL_DIFF_PREVIEW_CONTEXT = 256;
 const VIRTUAL_DIFF_RENDER_CHUNK_UNITS = 32;
 
 const VIRTUAL_INVISIBLE_META = Object.freeze({
-    0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)', marker: '[NBSP]' },
-    0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)', marker: '[SHY]' },
-    0x180E: { cls: 'invisible-mvs', title: 'Mongolian vowel separator (U+180E)', marker: '[MVS]' },
-    0x2002: { cls: 'invisible-ensp', title: 'En space (U+2002)', marker: '[EN]' },
-    0x2003: { cls: 'invisible-emsp', title: 'Em space (U+2003)', marker: '[EM]' },
-    0x2007: { cls: 'invisible-figure', title: 'Figure space (U+2007)', marker: '[FIG]' },
-    0x2008: { cls: 'invisible-punct', title: 'Punctuation space (U+2008)', marker: '[PUNCT]' },
-    0x2009: { cls: 'invisible-thin', title: 'Thin space (U+2009)', marker: '[THIN]' },
-    0x200A: { cls: 'invisible-hair', title: 'Hair space (U+200A)', marker: '[HS]' },
-    0x200B: { cls: 'invisible-zwsp', title: 'Zero-width space (U+200B)', marker: '|' },
-    0x200C: { cls: 'invisible-zwnj', title: 'Zero-width non-joiner (U+200C)', marker: '[ZWNJ]' },
-    0x200D: { cls: 'invisible-zwj', title: 'Zero-width joiner (U+200D)', marker: '[ZWJ]' },
-    0x200E: { cls: 'invisible-lrm', title: 'Left-to-right mark (U+200E)', marker: '[LRM]' },
-    0x200F: { cls: 'invisible-rlm', title: 'Right-to-left mark (U+200F)', marker: '[RLM]' },
-    0x202F: { cls: 'invisible-nnbsp', title: 'Narrow no-break space (U+202F)', marker: '[NNBSP]' },
-    0x205F: { cls: 'invisible-mmsp', title: 'Medium mathematical space (U+205F)', marker: '[MMSP]' },
-    0x2060: { cls: 'invisible-wj', title: 'Word joiner (U+2060)', marker: '[WJ]' },
-    0x3000: { cls: 'invisible-ideo', title: 'Ideographic space (U+3000)', marker: '[IDEO]' },
-    0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)', marker: '[BOM]' }
+    0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)' },
+    0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)' },
+    0x180E: { cls: 'invisible-mvs', title: 'Mongolian vowel separator (U+180E)' },
+    0x2002: { cls: 'invisible-ensp', title: 'En space (U+2002)' },
+    0x2003: { cls: 'invisible-emsp', title: 'Em space (U+2003)' },
+    0x2007: { cls: 'invisible-figure', title: 'Figure space (U+2007)' },
+    0x2008: { cls: 'invisible-punct', title: 'Punctuation space (U+2008)' },
+    0x2009: { cls: 'invisible-thin', title: 'Thin space (U+2009)' },
+    0x200A: { cls: 'invisible-hair', title: 'Hair space (U+200A)' },
+    0x200B: { cls: 'invisible-zwsp', title: 'Zero-width space (U+200B)' },
+    0x200C: { cls: 'invisible-zwnj', title: 'Zero-width non-joiner (U+200C)' },
+    0x200D: { cls: 'invisible-zwj', title: 'Zero-width joiner (U+200D)' },
+    0x200E: { cls: 'invisible-lrm', title: 'Left-to-right mark (U+200E)' },
+    0x200F: { cls: 'invisible-rlm', title: 'Right-to-left mark (U+200F)' },
+    0x202F: { cls: 'invisible-nnbsp', title: 'Narrow no-break space (U+202F)' },
+    0x205F: { cls: 'invisible-mmsp', title: 'Medium mathematical space (U+205F)' },
+    0x2060: { cls: 'invisible-wj', title: 'Word joiner (U+2060)' },
+    0x3000: { cls: 'invisible-ideo', title: 'Ideographic space (U+3000)' },
+    0xFEFF: { cls: 'invisible-bom', title: 'Zero-width no-break space / BOM (U+FEFF)' }
 });
 
 const VIRTUAL_CONFUSABLE_META = Object.freeze({
@@ -80,17 +83,13 @@ const VIRTUAL_CONFUSABLE_META = Object.freeze({
 let virtualGraphemeSegmenter = null;
 
 function virtualGraphemeSegmentAt(text, offset) {
-    if (typeof Intl === 'undefined' || typeof Intl.Segmenter !== 'function' || !text.length) return null;
+    if (!text.length) return null;
     if (!virtualGraphemeSegmenter) {
         virtualGraphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
     }
     const segments = virtualGraphemeSegmenter.segment(text);
     const target = virtualClamp(offset, 0, text.length - 1);
-    if (typeof segments.containing === 'function') return segments.containing(target) || null;
-    for (const segment of segments) {
-        if (segment.index <= target && target < segment.index + segment.segment.length) return segment;
-    }
-    return null;
+    return segments.containing(target) || null;
 }
 
 function virtualFiniteInteger(value, fallback) {
@@ -146,17 +145,12 @@ function virtualNormalizeSources(sources) {
 function virtualNormalizeSelection(selection, sources) {
     if (!selection || (selection.side !== 'left' && selection.side !== 'right')) return null;
     const source = sources[selection.side];
-    const anchorValue = Number.isInteger(selection.anchorSourceOffset)
-        ? selection.anchorSourceOffset
-        : selection.anchor;
-    const focusValue = Number.isInteger(selection.focusSourceOffset)
-        ? selection.focusSourceOffset
-        : selection.focus;
-    if (!Number.isFinite(anchorValue) || !Number.isFinite(focusValue)) return null;
+    if (!Number.isInteger(selection.anchorSourceOffset)
+        || !Number.isInteger(selection.focusSourceOffset)) return null;
     return {
         side: selection.side,
-        anchorSourceOffset: virtualClamp(Math.floor(anchorValue), 0, source.length),
-        focusSourceOffset: virtualClamp(Math.floor(focusValue), 0, source.length)
+        anchorSourceOffset: virtualClamp(selection.anchorSourceOffset, 0, source.length),
+        focusSourceOffset: virtualClamp(selection.focusSourceOffset, 0, source.length)
     };
 }
 
@@ -176,56 +170,43 @@ function getVirtualDiffCopyText(sources, selection, side, wholeSource) {
     return interval ? source.slice(interval.start, interval.end) : source;
 }
 
-function stripVirtualDiffInvisibleCharacters(text) {
-    const removeCodes = { 0x00AD: true, 0xFEFF: true };
-    const spaceCodes = {
-        0x00A0: true, 0x180E: true, 0x200B: true, 0x200C: true,
-        0x200D: true, 0x200E: true, 0x200F: true, 0x202F: true,
-        0x205F: true, 0x2060: true, 0x3000: true
-    };
-    let result = '';
-    for (let i = 0; i < text.length; i++) {
-        const code = text.charCodeAt(i);
-        if (removeCodes[code]) continue;
-        if (spaceCodes[code] || (code >= 0x2000 && code <= 0x200B)) {
-            if (result.slice(-1) !== ' ') result += ' ';
-        } else {
-            result += text[i];
-        }
-    }
-    return result;
-}
-
 function getVirtualDiffCleanCopyText(sources, side, cleaner) {
+    if (typeof cleaner !== 'function') {
+        throw new TypeError('Clean copy requires stripInvisibleCharacters.');
+    }
     const source = getVirtualDiffCopyText(sources, null, side, true);
-    const clean = typeof cleaner === 'function' ? cleaner : stripVirtualDiffInvisibleCharacters;
-    return clean(source);
+    return cleaner(source);
 }
 
 function createVirtualDiffView(options) {
     const settings = options || {};
-    const leftElement = settings.leftElement || settings.left;
-    const rightElement = settings.rightElement || settings.right;
+    const leftElement = settings.leftElement;
+    const rightElement = settings.rightElement;
     if (!leftElement || !rightElement) throw new TypeError('VirtualDiffView requires left and right elements.');
 
     const documentRef = settings.document || leftElement.ownerDocument
         || (typeof document !== 'undefined' ? document : null);
     if (!documentRef) throw new TypeError('VirtualDiffView requires a document.');
 
-    const requestFrame = settings.requestAnimationFrame
-        || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : function (callback) {
-            return setTimeout(function () { callback(Date.now()); }, 16);
-        });
-    const cancelFrame = settings.cancelAnimationFrame
-        || (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout);
-    const now = settings.now || (typeof performance !== 'undefined' && performance
-        && typeof performance.now === 'function'
-        ? function () { return performance.now(); }
-        : function () { return Date.now(); });
-    const cleanText = settings.stripInvisibleCharacters
-        || (typeof stripInvisibleCharacters === 'function' ? stripInvisibleCharacters : stripVirtualDiffInvisibleCharacters);
-    const onSelectionChange = typeof settings.onSelectionChange === 'function'
-        ? settings.onSelectionChange : function () {};
+    if (typeof settings.requestAnimationFrame !== 'function'
+        || typeof settings.cancelAnimationFrame !== 'function') {
+        throw new TypeError('VirtualDiffView requires requestAnimationFrame and cancelAnimationFrame.');
+    }
+    if (typeof settings.stripInvisibleCharacters !== 'function') {
+        throw new TypeError('VirtualDiffView requires stripInvisibleCharacters.');
+    }
+    if (typeof Intl === 'undefined' || typeof Intl.Segmenter !== 'function') {
+        throw new TypeError('VirtualDiffView requires Intl.Segmenter.');
+    }
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    if (typeof segmenter.segment('').containing !== 'function') {
+        throw new TypeError('VirtualDiffView requires Intl.Segmenter segments.containing().');
+    }
+    virtualGraphemeSegmenter = segmenter;
+    const requestFrame = settings.requestAnimationFrame;
+    const cancelFrame = settings.cancelAnimationFrame;
+    const now = settings.now || performance.now.bind(performance);
+    const cleanText = settings.stripInvisibleCharacters;
     const onRenderingReduced = typeof settings.onRenderingReduced === 'function'
         ? settings.onRenderingReduced : function () {};
     const estimatedCharacterWidth = Math.max(1, Number(settings.estimatedCharacterWidth) || 8);
@@ -409,22 +390,14 @@ function createVirtualDiffView(options) {
         scheduleRender();
     }
 
-    function setResult(first, second) {
+    function setResult(result) {
         if (destroyed) throw new Error('VirtualDiffView has been destroyed.');
-        let nextSources;
-        let nextModel;
-        let nextSelection = null;
-        if (first && first.model && first.sources) {
-            nextSources = first.sources;
-            nextModel = first.model;
-            nextSelection = first.selection || null;
-        } else if (first && first.version === 2) {
-            nextModel = first;
-            nextSources = second;
-        } else {
-            nextSources = first;
-            nextModel = second;
+        if (!result || !result.sources || !result.model) {
+            throw new TypeError('VirtualDiffView setResult() requires { sources, model, selection }.');
         }
+        const nextSources = result.sources;
+        const nextModel = result.model;
+        const nextSelection = result.selection || null;
         validateModel(nextModel);
         generation++;
         cancelScheduledRendering();
@@ -502,14 +475,13 @@ function createVirtualDiffView(options) {
 
     function specialMeta(code, changed) {
         if (code === 0x0020 && changed) {
-            return { cls: 'invisible-regular-space', title: 'Space (U+0020)', marker: 'space' };
+            return { cls: 'invisible-regular-space', title: 'Space (U+0020)' };
         }
         if (VIRTUAL_INVISIBLE_META[code]) return VIRTUAL_INVISIBLE_META[code];
         if (code >= 0x2000 && code <= 0x200A) {
             return {
                 cls: 'invisible-space',
-                title: 'Unicode space (U+' + code.toString(16).toUpperCase() + ')',
-                marker: '[SP]'
+                title: 'Unicode space (U+' + code.toString(16).toUpperCase() + ')'
             };
         }
         return null;
@@ -614,8 +586,6 @@ function createVirtualDiffView(options) {
                 marker.setAttribute('title', invisible.title + (count > 1 ? ' × ' + count : ''));
                 marker.setAttribute('aria-label', invisible.title + (count > 1 ? ', repeated ' + count + ' times' : ''));
                 marker.setAttribute('role', 'img');
-                marker.setAttribute('data-char', source.slice(position, groupEnd));
-                marker.setAttribute('data-count', String(count));
                 setSourceAttributes(marker, lineStart + position, lineStart + groupEnd);
                 if (count > 1) addText(marker, ' × ' + count, context);
                 specialMarkers++;
@@ -647,7 +617,6 @@ function createVirtualDiffView(options) {
                 if (selectedState.selected) span.classList.add('diff-logical-selection');
                 span.setAttribute('title', confusable.title);
                 span.setAttribute('aria-label', confusable.title);
-                span.setAttribute('data-char', source.slice(position, position + charLength));
                 setSourceAttributes(span, lineStart + position, lineStart + position + charLength);
                 if (!addText(span, source.slice(position, position + charLength), context)) {
                     span.parentNode.removeChild(span);
@@ -1051,17 +1020,8 @@ function createVirtualDiffView(options) {
         commitRenderTask(task);
     }
 
-    function emitSelectionChange() {
-        onSelectionChange(selection ? {
-            side: selection.side,
-            anchorSourceOffset: selection.anchorSourceOffset,
-            focusSourceOffset: selection.focusSourceOffset
-        } : null);
-    }
-
     function setSelection(nextSelection, shouldScroll) {
         selection = virtualNormalizeSelection(nextSelection, sources);
-        emitSelectionChange();
         if (selection && shouldScroll !== false) scrollOffsetIntoView(selection.side, selection.focusSourceOffset);
         scheduleRender();
         return getSelection();
@@ -1144,27 +1104,17 @@ function createVirtualDiffView(options) {
     }
 
     function moveOffsetByGrapheme(source, offset, delta) {
+        if (!source.length) return 0;
         const segment = delta < 0
             ? virtualGraphemeSegmentAt(source, offset - 1)
             : virtualGraphemeSegmentAt(source, offset);
-        if (segment) {
-            return delta < 0 ? segment.index : segment.index + segment.segment.length;
-        }
-        if (delta < 0) {
-            if (offset <= 0) return 0;
-            let next = offset - 1;
-            if (next > 0 && source.charCodeAt(next) >= 0xDC00 && source.charCodeAt(next) <= 0xDFFF
-                && source.charCodeAt(next - 1) >= 0xD800 && source.charCodeAt(next - 1) <= 0xDBFF) next--;
-            return next;
-        }
-        if (offset >= source.length) return source.length;
-        return Math.min(source.length, offset + codePointLengthAt(source, offset));
+        return delta < 0 ? segment.index : segment.index + segment.segment.length;
     }
 
     function snapToGraphemeBoundary(source, offset) {
         if (offset <= 0 || offset >= source.length) return virtualClamp(offset, 0, source.length);
         const segment = virtualGraphemeSegmentAt(source, offset);
-        if (!segment || offset === segment.index) return offset;
+        if (offset === segment.index) return offset;
         const end = segment.index + segment.segment.length;
         return offset - segment.index <= end - offset ? segment.index : end;
     }
@@ -1192,7 +1142,6 @@ function createVirtualDiffView(options) {
         }
         if (event.key === 'Escape') {
             selection = null;
-            emitSelectionChange();
             scheduleRender();
             return;
         }
@@ -1270,10 +1219,9 @@ function createVirtualDiffView(options) {
         if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
             const caret = typeof documentRef.caretPositionFromPoint === 'function'
                 ? documentRef.caretPositionFromPoint(event.clientX, event.clientY)
-                : (typeof documentRef.caretRangeFromPoint === 'function'
-                    ? documentRef.caretRangeFromPoint(event.clientX, event.clientY) : null);
-            const caretNode = caret && (caret.offsetNode || caret.startContainer);
-            const caretOffset = caret && (caret.offset !== undefined ? caret.offset : caret.startOffset);
+                : null;
+            const caretNode = caret && caret.offsetNode;
+            const caretOffset = caret && caret.offset;
             if (caretNode && paneElements[side].contains(caretNode) && Number.isFinite(caretOffset)) {
                 const fromCaret = sourceOffsetFromDataElement(side, caretNode, {
                     localSourceOffset: caretOffset,
@@ -1413,7 +1361,6 @@ function createVirtualDiffView(options) {
                 element.style.removeProperty('--diff-row-height');
             }
         }
-        emitSelectionChange();
         return api;
     }
 
@@ -1456,8 +1403,6 @@ function createVirtualDiffView(options) {
 
     const api = {
         setResult: setResult,
-        show: setResult,
-        render: setResult,
         resetToInput: resetToInput,
         destroy: destroy,
         selectAll: selectAll,
@@ -1467,24 +1412,11 @@ function createVirtualDiffView(options) {
         getCopyText: getCopyText,
         getCleanCopyText: getCleanCopyText,
         copyToClipboardData: copyToClipboardData,
-        setPreviewPage: setPreviewPage,
-        previousPreview: function (side, rowIndex) {
-            return setPreviewPage(side, rowIndex, (previewPageBySide[side].get(rowIndex) || 0) - 1);
-        },
-        nextPreview: function (side, rowIndex) {
-            return setPreviewPage(side, rowIndex, (previewPageBySide[side].get(rowIndex) || 0) + 1);
-        },
         getMountedRange: function () { return { first: mountedRange.first, last: mountedRange.last }; },
-        getMountedNodeCount: getMountedNodeCount,
-        getSources: function () { return { left: sources.left, right: sources.right }; }
+        getMountedNodeCount: getMountedNodeCount
     };
     return api;
 }
 
-if (typeof globalThis !== 'undefined') {
-    globalThis.RENDER_BUDGETS = RENDER_BUDGETS;
-    globalThis.computeVirtualWindow = computeVirtualWindow;
-    globalThis.createVirtualDiffView = createVirtualDiffView;
-    globalThis.getVirtualDiffCopyText = getVirtualDiffCopyText;
-    globalThis.getVirtualDiffCleanCopyText = getVirtualDiffCleanCopyText;
-}
+root.createVirtualDiffView = createVirtualDiffView;
+})(globalThis);

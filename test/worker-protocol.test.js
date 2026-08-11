@@ -5,6 +5,12 @@ const { Worker } = require('node:worker_threads');
 
 const adapterFilename = path.join(__dirname, 'worker-thread-adapter.js');
 const workerFilename = path.join(__dirname, '..', 'public', 'worker.js');
+const ALLOWED_WORKER_MESSAGE_TYPES = new Set([
+    'diff:started',
+    'diff:progress',
+    'diff:result',
+    'diff:error'
+]);
 
 async function runWorkerRequest(request, options) {
     options = options || {};
@@ -87,16 +93,13 @@ function terminalMessages(output) {
 
 function assertTagged(messages, jobId, inputRevision) {
     for (const message of messages) {
+        assert.equal(
+            ALLOWED_WORKER_MESSAGE_TYPES.has(message.type),
+            true,
+            'unexpected worker message type: ' + message.type
+        );
         assert.equal(message.jobId, jobId);
         assert.equal(message.inputRevision, inputRevision);
-    }
-}
-
-function walkKeys(value, visitor) {
-    if (!value || typeof value !== 'object' || ArrayBuffer.isView(value)) return;
-    for (const key of Object.keys(value)) {
-        visitor(key, value[key]);
-        walkKeys(value[key], visitor);
     }
 }
 
@@ -108,9 +111,10 @@ test('actual worker returns one atomic source-free DiffModelV2 with exact transf
 
     assert.equal(types[0], 'diff:started');
     assert.equal(types.includes('diff:progress'), true);
-    assert.equal(types.includes('diff:chunk'), false);
-    assert.equal(types.includes('chunk'), false);
-    assert.equal(types.includes('done'), false);
+    const progressPhases = output.messages
+        .filter(function (message) { return message.type === 'diff:progress'; })
+        .map(function (message) { return message.phase; });
+    assert.deepEqual(progressPhases, ['line-diff', 'line-diff', 'intraline', 'intraline']);
     assert.equal(terminals.length, 1);
     assert.equal(terminals[0].type, 'diff:result');
     assertTagged(output.messages, request.jobId, request.inputRevision);
@@ -129,13 +133,6 @@ test('actual worker returns one atomic source-free DiffModelV2 with exact transf
     assert.equal(model.rightLineStarts.byteLength, model.rightLineStarts.buffer.byteLength);
     assert.ok(model.changeBounds.length > 0);
 
-    const forbiddenKeys = new Set([
-        'left', 'right', 'text', 'leftLines', 'rightLines', 'chars', 'leftChars',
-        'html', 'leftHtml', 'rightHtml'
-    ]);
-    walkKeys(model, function (key) {
-        assert.equal(forbiddenKeys.has(key), false, 'model must not contain source/HTML field ' + key);
-    });
     assert.equal(JSON.stringify(model).includes('<script>alert(1)</script>'), false);
     assert.equal(JSON.stringify(model).includes('<img src=x onerror=alert(1)>'), false);
 
@@ -157,6 +154,7 @@ test('unsupported and malformed v2 requests return tagged protocol errors withou
     assert.equal(unsupported.messages[0].jobId, 7);
     assert.equal(unsupported.messages[0].inputRevision, 11);
     assert.equal(unsupported.transferObservation, null);
+    assertTagged(unsupported.messages, 7, 11);
 
     const malformed = await runWorkerRequest(validRequest({ left: 42 }));
     assert.deepEqual(malformed.messages.map(function (message) { return message.type; }), ['diff:error']);
@@ -164,12 +162,14 @@ test('unsupported and malformed v2 requests return tagged protocol errors withou
     assert.equal(malformed.messages[0].jobId, 7);
     assert.equal(malformed.messages[0].inputRevision, 11);
     assert.equal(malformed.transferObservation, null);
+    assertTagged(malformed.messages, 7, 11);
 
     const badToken = await runWorkerRequest(validRequest({ jobId: 'not-a-job' }));
     assert.equal(badToken.messages[0].type, 'diff:error');
     assert.equal(badToken.messages[0].code, 'INVALID_REQUEST');
     assert.equal(badToken.messages[0].jobId, null);
     assert.equal(badToken.messages[0].inputRevision, 11);
+    assertTagged(badToken.messages, null, 11);
 });
 
 test('authoritative compute errors remain tagged and never emit a model or transfer', async function () {

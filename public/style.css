@@ -71,26 +71,6 @@ header h1 {
     gap: 2px;
 }
 
-.header-links {
-    font-size: 10px;
-    display: flex;
-    gap: 8px;
-}
-
-.link-separator {
-    opacity: 0.3;
-}
-
-.header-links a {
-    color: var(--text-color);
-    opacity: 0.5;
-    text-decoration: none;
-}
-
-.header-links a:hover {
-    opacity: 0.8;
-}
-
 .mismatch-counter {
     font-size: 13px;
     font-weight: 600;
@@ -245,6 +225,7 @@ main {
     width: 5px;
     height: 100%;
     cursor: col-resize;
+    touch-action: none;
     background-color: var(--border-color);
     transition: background-color 0.2s ease, width 0.1s ease;
     position: relative;

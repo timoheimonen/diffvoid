@@ -11,19 +11,35 @@ const {
     countDescendants
 } = require('./fake-dom');
 
-function loadVirtualDiff() {
-    const filename = path.join(__dirname, '..', 'public', 'virtual-diff.js');
-    assert.equal(fs.existsSync(filename), true, 'public/virtual-diff.js must exist');
-    const context = {};
+function loadVirtualDiff(contextOverrides) {
+    const sharedFilename = path.join(__dirname, '..', 'public', 'shared-diff.js');
+    const virtualFilename = path.join(__dirname, '..', 'public', 'virtual-diff.js');
+    assert.equal(fs.existsSync(sharedFilename), true, 'public/shared-diff.js must exist');
+    assert.equal(fs.existsSync(virtualFilename), true, 'public/virtual-diff.js must exist');
+    const context = Object.assign({ Intl: Intl }, contextOverrides);
     vm.createContext(context);
-    vm.runInContext(fs.readFileSync(filename, 'utf8') + `
-this.createVirtualDiffViewForTest = createVirtualDiffView;
-this.computeVirtualWindowForTest = computeVirtualWindow;
-this.renderBudgetsForTest = RENDER_BUDGETS;
-this.copyTextForTest = getVirtualDiffCopyText;
-this.cleanCopyTextForTest = getVirtualDiffCleanCopyText;
-`, context);
-    return context;
+    vm.runInContext(fs.readFileSync(sharedFilename, 'utf8'), context);
+
+    const code = fs.readFileSync(virtualFilename, 'utf8');
+    const closing = '\n})(globalThis);';
+    const closingIndex = code.lastIndexOf(closing);
+    assert.notEqual(closingIndex, -1, 'virtual diff must use the canonical IIFE wrapper');
+    const testExports = `
+root.__VirtualDiffTest = Object.freeze({
+    computeVirtualWindow: computeVirtualWindow,
+    renderBudgets: RENDER_BUDGETS,
+    getCopyText: getVirtualDiffCopyText,
+    getCleanCopyText: getVirtualDiffCleanCopyText
+});`;
+    vm.runInContext(code.slice(0, closingIndex) + testExports + code.slice(closingIndex), context);
+    return {
+        stripInvisibleCharactersForTest: context.DiffCore.stripInvisibleCharacters,
+        createVirtualDiffViewForTest: context.createVirtualDiffView,
+        computeVirtualWindowForTest: context.__VirtualDiffTest.computeVirtualWindow,
+        renderBudgetsForTest: context.__VirtualDiffTest.renderBudgets,
+        copyTextForTest: context.__VirtualDiffTest.getCopyText,
+        cleanCopyTextForTest: context.__VirtualDiffTest.getCleanCopyText
+    };
 }
 
 const virtual = loadVirtualDiff();
@@ -92,30 +108,53 @@ function setupView(callbacks) {
     document.body.appendChild(right);
     const animation = createFakeAnimationFrame();
     const reductions = [];
-    const selections = [];
     const view = virtual.createVirtualDiffViewForTest({
         leftElement: left,
         rightElement: right,
         document,
         requestAnimationFrame: animation.requestAnimationFrame,
         cancelAnimationFrame: animation.cancelAnimationFrame,
+        stripInvisibleCharacters: virtual.stripInvisibleCharactersForTest,
         now: callbacks && callbacks.now ? callbacks.now : animation.now,
         onRenderingReduced(message, reason) {
             reductions.push({ message, reason });
             if (callbacks && callbacks.onRenderingReduced) callbacks.onRenderingReduced(message, reason);
-        },
-        onSelectionChange(selection) {
-            selections.push(selection);
-            if (callbacks && callbacks.onSelectionChange) callbacks.onSelectionChange(selection);
         }
     });
-    return { document, left, right, animation, reductions, selections, view };
+    return { document, left, right, animation, reductions, view };
 }
 
 function mountedRows(element) {
     const windowElement = element.querySelector('.diff-window');
     return windowElement ? windowElement.children : [];
 }
+
+test('runtime scripts expose only one frozen diff namespace and the virtual view factory', function () {
+    const sharedFilename = path.join(__dirname, '..', 'public', 'shared-diff.js');
+    const virtualFilename = path.join(__dirname, '..', 'public', 'virtual-diff.js');
+    const context = { Intl: Intl, performance: performance };
+    const initialKeys = new Set(Object.keys(context));
+    vm.createContext(context);
+
+    vm.runInContext(fs.readFileSync(sharedFilename, 'utf8'), context);
+    assert.deepEqual(
+        Object.keys(context).filter(function (key) { return !initialKeys.has(key); }),
+        ['DiffCore']
+    );
+    assert.equal(Object.isFrozen(context.DiffCore), true);
+    assert.deepEqual(Object.keys(context.DiffCore).sort(), [
+        'classifyDiffWork', 'computeDiffModel', 'createDiffWorkBudget',
+        'hasInvisibleCharacters', 'scanDiffInput', 'stripInvisibleCharacters',
+        'validateScannedDiffInput'
+    ]);
+
+    const sharedKeys = new Set(Object.keys(context));
+    vm.runInContext(fs.readFileSync(virtualFilename, 'utf8'), context);
+    assert.deepEqual(
+        Object.keys(context).filter(function (key) { return !sharedKeys.has(key); }),
+        ['createVirtualDiffView']
+    );
+});
 
 test('computeVirtualWindow caps and clamps 25,000 rows at top, middle, and end', function () {
     const budgets = virtual.renderBudgetsForTest;
@@ -140,6 +179,77 @@ test('computeVirtualWindow caps and clamps 25,000 rows at top, middle, and end',
     assert.deepEqual(
         Object.assign({}, virtual.computeVirtualWindowForTest(0, 100, 840, 21, 24, 200)),
         { first: 0, last: 0 }
+    );
+});
+
+test('the view exposes one canonical contract and requires its modern dependencies', function () {
+    const document = new FakeDocument();
+    const left = document.createElement('div');
+    const right = document.createElement('div');
+    const animation = createFakeAnimationFrame();
+    const required = {
+        document,
+        requestAnimationFrame: animation.requestAnimationFrame,
+        cancelAnimationFrame: animation.cancelAnimationFrame,
+        stripInvisibleCharacters: virtual.stripInvisibleCharactersForTest
+    };
+
+    assert.throws(
+        function () {
+            virtual.createVirtualDiffViewForTest(Object.assign({ left, right }, required));
+        },
+        /requires left and right elements/
+    );
+    assert.throws(
+        function () {
+            virtual.createVirtualDiffViewForTest({
+                leftElement: left,
+                rightElement: right,
+                document,
+                cancelAnimationFrame: animation.cancelAnimationFrame,
+                stripInvisibleCharacters: virtual.stripInvisibleCharactersForTest
+            });
+        },
+        /requires requestAnimationFrame and cancelAnimationFrame/
+    );
+    assert.throws(
+        function () {
+            virtual.createVirtualDiffViewForTest({
+                leftElement: left,
+                rightElement: right,
+                document,
+                requestAnimationFrame: animation.requestAnimationFrame,
+                cancelAnimationFrame: animation.cancelAnimationFrame
+            });
+        },
+        /requires stripInvisibleCharacters/
+    );
+
+    const withoutSegmenter = loadVirtualDiff({ Intl: {} });
+    assert.throws(
+        function () {
+            withoutSegmenter.createVirtualDiffViewForTest(Object.assign({
+                leftElement: left,
+                rightElement: right,
+                stripInvisibleCharacters: withoutSegmenter.stripInvisibleCharactersForTest
+            }, required));
+        },
+        /requires Intl\.Segmenter/
+    );
+
+    const fixture = equalFixture(1);
+    const env = setupView();
+    assert.deepEqual(Object.keys(env.view).sort(), [
+        'copyToClipboardData', 'destroy', 'getCleanCopyText', 'getCopyText',
+        'getMountedNodeCount', 'getMountedRange', 'getSelectedText', 'getSelection',
+        'resetToInput', 'selectAll', 'setResult', 'setSelection'
+    ]);
+    assert.throws(function () { env.view.setResult({ sources: fixture.sources }); }, /requires \{ sources, model, selection \}/);
+    env.view.setResult(fixture);
+    assert.equal(env.view.setSelection({ side: 'left' }, false), null);
+    assert.throws(
+        function () { virtual.cleanCopyTextForTest(fixture.sources, 'left'); },
+        /requires stripInvisibleCharacters/
     );
 });
 
@@ -269,8 +379,9 @@ test('untrusted text is only text while grouped invisible and confusable markers
 
     const marker = env.left.querySelector('.invisible-zwsp');
     assert.ok(marker);
-    assert.equal(marker.getAttribute('data-count'), '2');
-    assert.equal(marker.getAttribute('data-char'), '\u200B\u200B');
+    assert.deepEqual(Array.from(marker.attributes.keys()).sort(), [
+        'aria-label', 'class', 'data-source-end', 'data-source-start', 'role', 'title'
+    ]);
     assert.equal(marker.getAttribute('data-source-end') - marker.getAttribute('data-source-start'), 2);
     assert.match(marker.getAttribute('aria-label'), /repeated 2 times/);
     assert.equal(marker.getAttribute('role'), 'img');
@@ -653,5 +764,8 @@ test('top-level copy helpers normalize reversed selections and preserve trailing
         focusSourceOffset: 0
     }, 'left', false), 'a\n');
     assert.equal(virtual.copyTextForTest(sources, null, 'left', true), 'a\n');
-    assert.equal(virtual.cleanCopyTextForTest(sources, 'right'), 'x y');
+    assert.equal(
+        virtual.cleanCopyTextForTest(sources, 'right', virtual.stripInvisibleCharactersForTest),
+        'x y'
+    );
 });
