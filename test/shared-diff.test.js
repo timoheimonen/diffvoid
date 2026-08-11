@@ -20,6 +20,10 @@ this.validateDiffInput = validateDiffInput;
 this.lineSimilarity = lineSimilarity;
 this.computeMyersRanges = computeMyersRanges;
 this.renderWithInvisibles = renderWithInvisibles;
+this.scanDiffInput = typeof scanDiffInput === 'function' ? scanDiffInput : undefined;
+this.classifyDiffWork = typeof classifyDiffWork === 'function' ? classifyDiffWork : undefined;
+this.computeDiffModel = typeof computeDiffModel === 'function' ? computeDiffModel : undefined;
+this.splitDiffUnitsV2 = typeof splitDiffUnits === 'function' ? splitDiffUnits : undefined;
 `, context);
     return context;
 }
@@ -279,4 +283,74 @@ test('chunked panel rendering matches full panel rendering', function () {
 test('difference row count uses the shared semantic counter', function () {
     const result = diff.computeLineDiff('a\nb\nc', 'a\nb!\nx\nc');
     assert.equal(diff.countDifferenceRows(result), 2);
+});
+
+test('compact v2 ranges preserve grapheme boundaries and reconstruct both sources', function () {
+    assert.equal(typeof diff.computeDiffModel, 'function');
+
+    const left = 'Cafe\u0301 😀\nunchanged\n';
+    const right = 'Cafe 😃\nunchanged\n';
+    const model = diff.computeDiffModel(left, right);
+
+    assert.equal(model.version, 2);
+    assert.equal(Object.prototype.toString.call(model.changeBounds), '[object Uint32Array]');
+    assert.equal(Object.prototype.toString.call(model.leftLineStarts), '[object Uint32Array]');
+    assert.equal(Object.prototype.toString.call(model.rightLineStarts), '[object Uint32Array]');
+
+    const rebuilt = { left: [], right: [] };
+    for (const row of model.rows) {
+        assert.equal(Object.hasOwn(row, 'leftChars'), false);
+        assert.equal(Object.hasOwn(row, 'chars'), false);
+
+        if (Number.isInteger(row.leftLineIndex)) {
+            const start = model.leftLineStarts[row.leftLineIndex];
+            const end = row.leftLineIndex + 1 < model.leftLineStarts.length
+                ? model.leftLineStarts[row.leftLineIndex + 1] - 1
+                : left.length;
+            rebuilt.left.push(left.slice(start, end));
+        }
+        if (Number.isInteger(row.rightLineIndex)) {
+            const start = model.rightLineStarts[row.rightLineIndex];
+            const end = row.rightLineIndex + 1 < model.rightLineStarts.length
+                ? model.rightLineStarts[row.rightLineIndex + 1] - 1
+                : right.length;
+            rebuilt.right.push(right.slice(start, end));
+        }
+
+        if (row.type === 'modified' && row.detailMode === 'precise') {
+            const leftLineStart = model.leftLineStarts[row.leftLineIndex];
+            const leftLineEnd = row.leftLineIndex + 1 < model.leftLineStarts.length
+                ? model.leftLineStarts[row.leftLineIndex + 1] - 1
+                : left.length;
+            const rightLineStart = model.rightLineStarts[row.rightLineIndex];
+            const rightLineEnd = row.rightLineIndex + 1 < model.rightLineStarts.length
+                ? model.rightLineStarts[row.rightLineIndex + 1] - 1
+                : right.length;
+            const leftBoundaries = new Set(
+                Array.from(diff.splitDiffUnitsV2(left.slice(leftLineStart, leftLineEnd)).boundaries)
+            );
+            const rightBoundaries = new Set(
+                Array.from(diff.splitDiffUnitsV2(right.slice(rightLineStart, rightLineEnd)).boundaries)
+            );
+
+            for (let i = 0; i < row.leftRangeCount; i++) {
+                const offset = row.leftRangeOffset + (i * 2);
+                assert.equal(leftBoundaries.has(model.changeBounds[offset]), true);
+                assert.equal(leftBoundaries.has(model.changeBounds[offset + 1]), true);
+            }
+            for (let i = 0; i < row.rightRangeCount; i++) {
+                const offset = row.rightRangeOffset + (i * 2);
+                assert.equal(rightBoundaries.has(model.changeBounds[offset]), true);
+                assert.equal(rightBoundaries.has(model.changeBounds[offset + 1]), true);
+            }
+        }
+    }
+
+    assert.equal(rebuilt.left.join('\n'), left);
+    assert.equal(rebuilt.right.join('\n'), right);
+});
+
+test('bounded row alignment finds both globally compatible modified pairs', function () {
+    const result = diff.computeLineDiff('abc1\nabc1y', 'abc2\nabc1x');
+    assert.deepEqual(Array.from(result.diff, function (row) { return row.type; }), ['modified', 'modified']);
 });
