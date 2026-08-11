@@ -86,7 +86,11 @@
       <p>The complete source code for this project is publicly available and can be independently verified:</p>
       <ul>
         <li><code>public/index.html</code> - UI structure</li>
-        <li><code>public/script.js</code> - comparison logic and diff algorithm</li>
+        <li><code>public/script.js</code> - input state and application orchestration</li>
+        <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
+        <li><code>public/diff-controller.js</code> - worker lifecycle, cancellation, and stale-result protection</li>
+        <li><code>public/worker.js</code> - worker protocol and comparison execution</li>
+        <li><code>public/virtual-diff.js</code> - virtual rendering, selection, and copy behavior</li>
         <li><code>public/style.css</code> - styling</li>
       </ul>
       <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"

@@ -3,46 +3,72 @@
 // See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 
 (function () {
-    function initTheme() {
-        if (window.diffvoidTheme && typeof window.diffvoidTheme.initTheme === 'function') {
-            window.diffvoidTheme.initTheme();
-        }
-    }
-
-    function toggleTheme() {
-        if (window.diffvoidTheme && typeof window.diffvoidTheme.toggleTheme === 'function') {
-            window.diffvoidTheme.toggleTheme();
-        }
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
-        initTheme();
-
-        const left = document.getElementById('input-left');
-        const right = document.getElementById('input-right');
-        let rendering = false;
+        const panes = {
+            left: document.getElementById('input-left'),
+            right: document.getElementById('input-right')
+        };
         const counter = document.getElementById('mismatch-counter');
-        const copyCleanLeftBtn = document.getElementById('copy-clean-left');
-        const copyCleanRightBtn = document.getElementById('copy-clean-right');
         const progressEl = document.getElementById('progress-indicator');
+        const renderNotice = document.getElementById('render-notice');
+        const copyButtons = {
+            left: document.getElementById('copy-left'),
+            right: document.getElementById('copy-right')
+        };
+        const cleanCopyButtons = {
+            left: document.getElementById('copy-clean-left'),
+            right: document.getElementById('copy-clean-right')
+        };
+        const divider = document.getElementById('divider');
+        const mainEl = document.querySelector('main');
 
-        const workerEnabled = typeof Worker !== 'undefined';
-        let worker = null;
-        let workerActive = false;
-        let chunkBuffer = { left: '', right: '' };
-        let chunkBatchCount = 0;
-        let isProcessing = false;
-        let storedLeftText = '';
-        let storedRightText = '';
-
-        function setCopyButtonVisibility(leftText, rightText) {
-            if (copyCleanLeftBtn) {
-                copyCleanLeftBtn.classList.toggle('visible', hasInvisibleCharacters(leftText));
-            }
-            if (copyCleanRightBtn) {
-                copyCleanRightBtn.classList.toggle('visible', hasInvisibleCharacters(rightText));
-            }
+        for (const side of ['left', 'right']) {
+            if (!panes[side].textContent.trim()) panes[side].replaceChildren();
         }
+
+        const state = {
+            sources: {
+                left: panes.left.textContent || '',
+                right: panes.right.textContent || ''
+            },
+            mode: 'input'
+        };
+
+        const view = createVirtualDiffView({
+            leftElement: panes.left,
+            rightElement: panes.right,
+            document: document,
+            requestAnimationFrame: window.requestAnimationFrame.bind(window),
+            cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+            stripInvisibleCharacters: window.DiffCore.stripInvisibleCharacters,
+            onRenderingReduced: function (message) {
+                if (!renderNotice) return;
+                renderNotice.textContent = message;
+                renderNotice.style.display = 'block';
+            }
+        });
+
+        const controller = createDiffController({
+            WorkerCtor: typeof Worker === 'function' ? Worker : null,
+            visibility: document,
+            onStateChange: function (update) {
+                if (update.state === 'starting') {
+                    showProgress('Starting comparison...');
+                } else if (update.state === 'computing') {
+                    showProgress('Computing diff...');
+                }
+            },
+            onProgress: function (message) {
+                if (message.phase === 'line-diff') {
+                    showProgress('Comparing lines...');
+                } else if (message.phase === 'intraline') {
+                    showProgress('Computing detailed changes...');
+                }
+            },
+            onResult: showResult,
+            onError: showComparisonError,
+            syncFallback: computeModel
+        });
 
         function showProgress(text) {
             if (!progressEl) return;
@@ -53,106 +79,6 @@
         function hideProgress() {
             if (!progressEl) return;
             progressEl.style.display = 'none';
-        }
-
-        function cancelWorker() {
-            if (worker) {
-                worker.postMessage({ type: 'cancel' });
-                worker.terminate();
-                worker = null;
-            }
-            workerActive = false;
-            chunkBuffer = { left: '', right: '' };
-            chunkBatchCount = 0;
-        }
-
-        function initWorker() {
-            if (!workerEnabled) return null;
-            try {
-                const w = new Worker('worker.js');
-                w.onmessage = handleWorkerMessage;
-                w.onerror = function() {
-                    if (worker !== w) return;
-                    workerActive = false;
-                    worker = null;
-                    hideProgress();
-                    showProgress('Worker failed. Using fallback...');
-                    const lt = storedLeftText;
-                    const rt = storedRightText;
-                    setTimeout(function() {
-                        hideProgress();
-                        compareSync(lt, rt);
-                    }, 1500);
-                };
-                return w;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function handleWorkerMessage(e) {
-            const { type, leftHtml, rightHtml, processed, total, mismatchCount, message } = e.data;
-            if (type === 'chunk') {
-                chunkBuffer.left += leftHtml;
-                chunkBuffer.right += rightHtml;
-                chunkBatchCount++;
-
-                showProgress('Processing ' + processed + ' of ' + total + ' entries...');
-
-                if (chunkBatchCount >= 3) {
-                    flushChunkBuffer();
-                }
-            } else if (type === 'done') {
-                flushChunkBuffer();
-                setCounter(mismatchCount);
-                hideProgress();
-                workerActive = false;
-                isProcessing = false;
-
-                updateEmpty(right);
-                updateEmpty(left);
-            } else if (type === 'cancelled') {
-                hideProgress();
-                workerActive = false;
-                isProcessing = false;
-            } else if (type === 'computing') {
-                showProgress('Computing diff...');
-            } else if (type === 'error') {
-                cancelWorker();
-                showProgress(message || 'Comparison failed.');
-                isProcessing = false;
-            }
-        }
-
-        function flushChunkBuffer() {
-            if (!chunkBuffer.left && !chunkBuffer.right) return;
-            rendering = true;
-            left.insertAdjacentHTML('beforeend', chunkBuffer.left);
-            right.insertAdjacentHTML('beforeend', chunkBuffer.right);
-            rendering = false;
-            chunkBuffer = { left: '', right: '' };
-            chunkBatchCount = 0;
-        }
-
-        const toggle = document.getElementById('theme-toggle');
-        if (toggle) toggle.addEventListener('click', toggleTheme);
-
-        const clearBtn = document.getElementById('clear-button');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function () {
-                cancelWorker();
-                storedLeftText = '';
-                storedRightText = '';
-                left.innerHTML = '';
-                right.innerHTML = '';
-                updateEmpty(left);
-                updateEmpty(right);
-                hideCounter();
-                hideProgress();
-                if (copyCleanLeftBtn) copyCleanLeftBtn.classList.remove('visible');
-                if (copyCleanRightBtn) copyCleanRightBtn.classList.remove('visible');
-                resetToDefault();
-            });
         }
 
         function hideCounter() {
@@ -173,332 +99,258 @@
             counter.style.display = 'block';
         }
 
-        function updateEmpty(el) {
-            el.classList.toggle('is-empty', !el.textContent.trim());
+        function hideRenderNotice() {
+            if (!renderNotice) return;
+            renderNotice.textContent = '';
+            renderNotice.style.display = 'none';
         }
 
-        function extractText(node) {
-            let text = '';
-            for (let i = 0; i < node.childNodes.length; i++) {
-                const child = node.childNodes[i];
-                if (child.nodeType === Node.TEXT_NODE) {
-                    text += child.nodeValue;
-                } else if (child.nodeType === Node.ELEMENT_NODE) {
-                    if (child.hasAttribute('data-char')) {
-                        text += child.getAttribute('data-char');
-                    } else {
-                        text += extractText(child);
-                    }
-                }
+        function setButtonVisible(button, visible) {
+            if (!button) return;
+            const isVisible = !!visible;
+            button.classList.toggle('visible', isVisible);
+            button.hidden = !isVisible;
+            button.disabled = !isVisible;
+            if (isVisible) button.removeAttribute('aria-hidden');
+            else button.setAttribute('aria-hidden', 'true');
+        }
+
+        function hideResultControls() {
+            for (const side of ['left', 'right']) {
+                setButtonVisible(copyButtons[side], false);
+                setButtonVisible(cleanCopyButtons[side], false);
             }
-            return text;
         }
 
-        function getFieldText(el) {
-            const diffLines = el.querySelectorAll('.diff-line');
-            if (diffLines.length === 0) return el.textContent || '';
-            const parts = [];
-            diffLines.forEach(function (line) {
-                const gutter = line.querySelector('.diff-gutter');
-                if (gutter && gutter.textContent !== '') {
-                    const content = line.querySelector('.diff-content');
-                    parts.push(content ? extractText(content) : '');
-                }
+        function showResultControls() {
+            for (const side of ['left', 'right']) {
+                setButtonVisible(copyButtons[side], true);
+                setButtonVisible(cleanCopyButtons[side], window.DiffCore.hasInvisibleCharacters(state.sources[side]));
+            }
+        }
+
+        function updateEmptyState() {
+            for (const side of ['left', 'right']) {
+                panes[side].classList.toggle('is-empty', state.mode === 'input' && !state.sources[side].length);
+            }
+        }
+
+        function resetToInput() {
+            state.mode = 'input';
+            view.resetToInput(state.sources);
+            hideResultControls();
+            hideRenderNotice();
+            updateEmptyState();
+        }
+
+        function showResult(model) {
+            try {
+                state.mode = 'diff';
+                hideRenderNotice();
+                view.setResult({ sources: state.sources, model: model, selection: null });
+            } catch (err) {
+                showComparisonError({
+                    message: err && err.message ? err.message : 'The comparison result could not be displayed.'
+                });
+                return;
+            }
+
+            setCounter(model.mismatchCount);
+            showResultControls();
+            hideProgress();
+            updateEmptyState();
+        }
+
+        function showComparisonError(error) {
+            resetToInput();
+            hideCounter();
+            showProgress(error && error.message ? error.message : 'Comparison failed.');
+        }
+
+        function computeModel(leftText, rightText) {
+            return window.DiffCore.computeDiffModel(leftText, rightText, {
+                workBudget: window.DiffCore.createDiffWorkBudget()
             });
-            return parts.join('\n');
         }
 
         function compare() {
-            const lt = storedLeftText || getFieldText(left);
-            const rt = storedRightText || getFieldText(right);
+            const leftText = state.sources.left;
+            const rightText = state.sources.right;
 
-            setCopyButtonVisibility(lt, rt);
-
-            if (!lt.length || !rt.length) {
-                cancelWorker();
-                rendering = true;
-                if (lt.length) {
-                    left.textContent = lt;
-                    storedLeftText = lt;
-                } else {
-                    left.innerHTML = '';
-                    storedLeftText = '';
-                }
-                if (rt.length) {
-                    right.textContent = rt;
-                    storedRightText = rt;
-                } else {
-                    right.innerHTML = '';
-                    storedRightText = '';
-                }
-                rendering = false;
-                updateEmpty(left);
-                updateEmpty(right);
+            if (!leftText.length || !rightText.length) {
+                controller.cancel({ invalidate: true, reason: 'incomplete-input' });
+                resetToInput();
                 hideCounter();
                 hideProgress();
                 return;
             }
 
-            const validation = validateDiffInput(lt, rt);
+            const scan = window.DiffCore.scanDiffInput(leftText, rightText);
+            const validation = window.DiffCore.validateScannedDiffInput(scan);
             if (!validation.ok) {
-                cancelWorker();
+                controller.cancel({ invalidate: true, reason: 'invalid-input' });
+                resetToInput();
                 hideCounter();
                 showProgress(validation.message);
                 return;
             }
 
-            const estimatedLines = validation.estimatedLines;
-
-            if (workerEnabled && estimatedLines > 100) {
-                cancelWorker();
-                rendering = true;
-                left.innerHTML = '';
-                right.innerHTML = '';
-                rendering = false;
-                hideCounter();
-
-                worker = initWorker();
-                if (!worker) {
-                    compareSync(lt, rt);
-                    return;
-                }
-
-                workerActive = true;
-                isProcessing = true;
-                showProgress('Starting comparison...');
-                worker.postMessage({ type: 'diff', left: lt, right: rt });
-            } else {
-                cancelWorker();
-                compareSync(lt, rt);
-            }
+            const classification = window.DiffCore.classifyDiffWork(leftText, rightText, scan);
+            hideCounter();
+            hideResultControls();
+            hideRenderNotice();
+            controller.start({
+                left: leftText,
+                right: rightText,
+                isSyncSafe: classification.isSyncSafe
+            });
         }
 
-        function compareSync(lt, rt) {
-            let diffResult;
-            try {
-                diffResult = computeLineDiff(lt, rt);
-            } catch (err) {
-                hideCounter();
-                showProgress(err && err.message ? err.message : 'Comparison failed.');
-                return;
-            }
-            const rightHtml = buildPanelHtml(diffResult, 'right');
-            const leftHtml = buildPanelHtml(diffResult, 'left');
-            const mismatchCount = countDifferenceRows(diffResult);
-
-            setCounter(mismatchCount);
-            hideProgress();
-
-            rendering = true;
-            right.innerHTML = rightHtml;
-            left.innerHTML = leftHtml;
-            rendering = false;
-
-            updateEmpty(right);
-            updateEmpty(left);
+        function replaceSource(side, text) {
+            controller.cancel({ invalidate: true, reason: 'input-changed' });
+            state.sources[side] = text;
+            resetToInput();
+            compare();
         }
 
-        function preventTyping(e) {
-            if (e.ctrlKey || e.metaKey) return;
-            e.preventDefault();
-        }
-
-        left.addEventListener('keydown', preventTyping);
-        right.addEventListener('keydown', preventTyping);
-
-        function bindPaste(el) {
-            el.addEventListener('paste', function (e) {
-                e.preventDefault();
-                const text = e.clipboardData.getData('text/plain');
-                el.textContent = text;
-                updateEmpty(el);
-                if (el === left) {
-                    storedLeftText = text;
-                } else {
-                    storedRightText = text;
-                }
+        function bindInput(side) {
+            const element = panes[side];
+            element.addEventListener('keydown', function (event) {
+                if (state.mode !== 'input' || event.ctrlKey || event.metaKey || event.altKey) return;
+                event.preventDefault();
+            });
+            element.addEventListener('paste', function (event) {
+                if (!event.clipboardData) return;
+                event.preventDefault();
+                replaceSource(side, event.clipboardData.getData('text/plain'));
+            });
+            element.addEventListener('drop', function (event) {
+                if (!event.dataTransfer) return;
+                event.preventDefault();
+                replaceSource(side, event.dataTransfer.getData('text/plain'));
+            });
+            element.addEventListener('input', function () {
+                if (state.mode !== 'input') return;
+                state.sources[side] = element.textContent || '';
                 compare();
             });
         }
 
-        bindPaste(left);
-        bindPaste(right);
+        bindInput('left');
+        bindInput('right');
 
-        function copyWithoutGutters(e, el) {
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed) return;
-            const range = sel.getRangeAt(0);
-            const fragment = range.cloneContents();
-            const diffLines = fragment.querySelectorAll('.diff-line');
-            let text = '';
-            if (diffLines.length) {
-                const parts = [];
-                diffLines.forEach(function (line) {
-                    const gutter = line.querySelector('.diff-gutter');
-                    const content = line.querySelector('.diff-content');
-                    if (gutter && gutter.textContent === '' && (!content || content.textContent === '')) return;
-                    parts.push(content ? extractText(content) : '');
-                });
-                text = parts.join('\n');
-            } else {
-                fragment.querySelectorAll('.diff-gutter').forEach(function (g) { g.remove(); });
-                text = extractText(fragment);
-            }
-            e.clipboardData.setData('text/plain', text);
-            e.preventDefault();
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) themeToggle.addEventListener('click', window.diffvoidTheme.toggleTheme);
+
+        const clearButton = document.getElementById('clear-button');
+        if (clearButton) {
+            clearButton.addEventListener('click', function () {
+                controller.cancel({ invalidate: true, reason: 'clear' });
+                state.sources.left = '';
+                state.sources.right = '';
+                resetToInput();
+                hideCounter();
+                hideProgress();
+                resetDivider();
+            });
         }
 
-        function bindCopy(el) {
-            el.addEventListener('copy', function (e) { copyWithoutGutters(e, el); });
+        async function copyText(text, side, button) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showCopyFeedback(button);
+            } catch (err) {
+                console.error('Failed to copy ' + side + ' text:', err);
+            }
         }
 
-        bindCopy(left);
-        bindCopy(right);
-
-        let isSyncing = false;
-
-        function syncScroll(src, dst) {
-            if (isSyncing) return;
-            isSyncing = true;
-
-            const srcHeight = src.scrollHeight - src.clientHeight;
-            const dstHeight = dst.scrollHeight - dst.clientHeight;
-
-            if (srcHeight <= 0) {
-                isSyncing = false;
-                return;
-            }
-
-            const scrollRatio = src.scrollTop / srcHeight;
-            dst.scrollTop = scrollRatio * dstHeight;
-
+        function showCopyFeedback(button) {
+            if (!button) return;
+            button.classList.add('copy-success');
             setTimeout(function () {
-                isSyncing = false;
-            }, 10);
+                button.classList.remove('copy-success');
+            }, 1200);
         }
 
-        left.addEventListener('scroll', function () {
-            syncScroll(left, right);
-        });
-
-        right.addEventListener('scroll', function () {
-            syncScroll(right, left);
-        });
-
-        const divider = document.getElementById('divider');
-        let isDragging = false;
-        const mainEl = document.querySelector('main');
-
-        function resetToDefault() {
-            left.style.width = 'calc(50% - 2.5px)';
-            right.style.width = 'calc(50% - 2.5px)';
+        for (const side of ['left', 'right']) {
+            if (copyButtons[side]) {
+                copyButtons[side].addEventListener('click', function () {
+                    copyText(state.sources[side], side, copyButtons[side]);
+                });
+            }
+            if (cleanCopyButtons[side]) {
+                cleanCopyButtons[side].addEventListener('click', function () {
+                    copyText(
+                        window.DiffCore.stripInvisibleCharacters(state.sources[side]),
+                        side,
+                        cleanCopyButtons[side]
+                    );
+                });
+            }
         }
 
-        function startDragging(e) {
-            isDragging = true;
+        let activePointerId = null;
+
+        function setDividerPercent(percent) {
+            const value = Math.max(15, Math.min(85, percent));
+            panes.left.style.width = 'calc(' + value + '% - 2.5px)';
+            panes.right.style.width = 'calc(' + (100 - value) + '% - 2.5px)';
+            if (divider) divider.setAttribute('aria-valuenow', String(Math.round(value)));
+        }
+
+        function resetDivider() {
+            setDividerPercent(50);
+        }
+
+        function startDragging(event) {
+            if (event.isPrimary === false || event.button !== 0 || activePointerId !== null) return;
+            activePointerId = event.pointerId;
             document.body.classList.add('resizing');
             divider.classList.add('dragging');
-            e.preventDefault();
+            updateSplitFromClientX(event.clientX);
+            event.preventDefault();
         }
 
-        function stopDragging() {
-            if (!isDragging) return;
-            isDragging = false;
+        function stopDragging(event) {
+            if (event.pointerId !== activePointerId) return;
+            activePointerId = null;
             document.body.classList.remove('resizing');
-            if (divider) divider.classList.remove('dragging');
+            divider.classList.remove('dragging');
         }
 
         function updateSplitFromClientX(clientX) {
             const mainRect = mainEl.getBoundingClientRect();
-            const x = clientX - mainRect.left;
-            let percent = (x / mainRect.width) * 100;
-            if (percent < 15) percent = 15;
-            if (percent > 85) percent = 85;
-            left.style.width = 'calc(' + percent + '% - 2.5px)';
-            right.style.width = 'calc(' + (100 - percent) + '% - 2.5px)';
+            setDividerPercent(((clientX - mainRect.left) / mainRect.width) * 100);
         }
 
         if (divider) {
-            divider.addEventListener('mousedown', startDragging);
-            divider.addEventListener('touchstart', startDragging, { passive: false });
-
-            divider.addEventListener('dblclick', function () {
-                resetToDefault();
+            divider.addEventListener('pointerdown', startDragging);
+            divider.addEventListener('dblclick', resetDivider);
+            divider.addEventListener('keydown', function (event) {
+                const current = Number(divider.getAttribute('aria-valuenow')) || 50;
+                if (event.key === 'ArrowLeft') setDividerPercent(current - 2);
+                else if (event.key === 'ArrowRight') setDividerPercent(current + 2);
+                else if (event.key === 'Home') setDividerPercent(15);
+                else if (event.key === 'End') setDividerPercent(85);
+                else return;
+                event.preventDefault();
             });
         }
 
-        document.addEventListener('mousemove', function (e) {
-            if (!isDragging) return;
-            updateSplitFromClientX(e.clientX);
+        document.addEventListener('pointermove', function (event) {
+            if (event.pointerId === activePointerId) updateSplitFromClientX(event.clientX);
+        });
+        document.addEventListener('pointerup', stopDragging);
+        document.addEventListener('pointercancel', stopDragging);
+
+        window.addEventListener('beforeunload', function () {
+            controller.destroy();
+            view.destroy();
         });
 
-        document.addEventListener('touchmove', function (e) {
-            if (!isDragging) return;
-            const touch = e.touches[0];
-            updateSplitFromClientX(touch.clientX);
-        }, { passive: false });
-
-        document.addEventListener('mouseup', stopDragging);
-        document.addEventListener('touchend', stopDragging);
-
-        async function copyCleanText(side) {
-            const el = side === 'left' ? left : right;
-            const text = getFieldText(el);
-            const cleanText = stripInvisibleCharacters(text);
-
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                try {
-                    await navigator.clipboard.writeText(cleanText);
-                    showCopyFeedback(side);
-                } catch (err) {
-                    fallbackCopy(cleanText, side);
-                }
-            } else {
-                fallbackCopy(cleanText, side);
-            }
-        }
-
-        function fallbackCopy(text, side) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.left = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                showCopyFeedback(side);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-            }
-            document.body.removeChild(textarea);
-        }
-
-        function showCopyFeedback(side) {
-            const btn = document.getElementById('copy-clean-' + side);
-            if (!btn) return;
-            btn.classList.add('copy-success');
-            setTimeout(function () {
-                btn.classList.remove('copy-success');
-            }, 1200);
-        }
-
-        if (copyCleanLeftBtn) {
-            copyCleanLeftBtn.addEventListener('click', function () {
-                copyCleanText('left');
-            });
-        }
-
-        if (copyCleanRightBtn) {
-            copyCleanRightBtn.addEventListener('click', function () {
-                copyCleanText('right');
-            });
-        }
-
-        if (!left.textContent.trim()) left.innerHTML = '';
-        if (!right.textContent.trim()) right.innerHTML = '';
-
-        updateEmpty(left);
-        updateEmpty(right);
+        hideResultControls();
+        hideRenderNotice();
+        resetDivider();
+        updateEmptyState();
     });
 })();
