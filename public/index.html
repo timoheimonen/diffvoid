@@ -14,8 +14,9 @@
     <meta name="keywords" content="text comparison, diff, text diff, compare texts, diffvoid">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="author" content="Timo Heimonen">
-    <meta name="version" content="2.0.0">
-    <meta name="theme-color" content="#1a1a2e">
+    <meta name="version" content="2.1.0">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
     <meta property="og:title" content="Diffvoid - Secure Online Text Comparison Tool">
     <meta property="og:description"
         content="Compare texts instantly, detect hidden Unicode characters, and keep your data private with fully browser-side diff processing.">
@@ -62,80 +63,69 @@
 </head>
 
 <body>
-    <header>
-        <div class="header-left">
-            <h1>diffvoid.com - your secure place to compare texts</h1>
-        </div>
+    <header id="menu-bar">
+        <h1 id="logo">
+            <span class="logo-mark">diffvoid</span>
+            <span class="logo-tagline">your secure place to compare texts</span>
+        </h1>
         <div class="copy-clean-container">
             <div class="mismatch-counter" id="mismatch-counter" style="display: none;"></div>
             <div id="progress-indicator" class="progress-indicator" role="status" aria-live="polite"
                 aria-atomic="true" style="display: none;"></div>
             <div id="render-notice" class="render-notice" role="status" aria-live="polite" aria-atomic="true"
                 style="display: none;"></div>
-            <button id="copy-left" class="copy-clean-btn" aria-label="Copy all left text"
+            <button id="copy-left" class="copy-clean-btn" type="button" aria-label="Copy all left text"
                 title="Copy all left text" hidden disabled aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
                 <span>Copy L</span>
             </button>
-            <button id="copy-right" class="copy-clean-btn" aria-label="Copy all right text"
+            <button id="copy-right" class="copy-clean-btn" type="button" aria-label="Copy all right text"
                 title="Copy all right text" hidden disabled aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
                 <span>Copy R</span>
             </button>
-            <button id="copy-clean-left" class="copy-clean-btn" aria-label="Copy left text without invisible characters"
+            <button id="copy-clean-left" class="copy-clean-btn" type="button" aria-label="Copy left text without invisible characters"
                 title="Copy left text without invisible characters" hidden disabled aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
                 <span>Clean L</span>
             </button>
-            <button id="copy-clean-right" class="copy-clean-btn" aria-label="Copy right text without invisible characters"
+            <button id="copy-clean-right" class="copy-clean-btn" type="button" aria-label="Copy right text without invisible characters"
                 title="Copy right text without invisible characters" hidden disabled aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
                 <span>Clean R</span>
             </button>
         </div>
-        <div class="header-actions">
-            <button id="clear-button" class="icon-button" aria-label="Clear all text">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <nav class="header-actions" aria-label="Actions">
+            <button id="clear-button" class="icon-button" type="button" aria-label="Clear all text" title="Clear all text">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.6 9a1.5 1.5 0 0 0 1.5 1.5h3.8a1.5 1.5 0 0 0 1.5-1.5L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
             </button>
-            <button id="theme-toggle" class="icon-button" aria-label="Toggle dark mode">
-                <svg class="sun-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="5"></circle>
-                    <line x1="12" y1="1" x2="12" y2="3"></line>
-                    <line x1="12" y1="21" x2="12" y2="23"></line>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                    <line x1="1" y1="12" x2="3" y2="12"></line>
-                    <line x1="21" y1="12" x2="23" y2="12"></line>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            <span class="menu-divider" aria-hidden="true"></span>
+            <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to dark theme">
+                <svg class="moon-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
                 </svg>
-                <svg class="moon-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                <svg class="sun-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
             </button>
-        </div>
+            <button id="info-btn" class="text-btn" type="button" aria-haspopup="dialog" aria-controls="info-overlay" aria-expanded="false"
+                title="How diffvoid works">help</button>
+        </nav>
     </header>
     <main aria-label="Text comparison workspace">
         <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" aria-label="Left text"
@@ -146,17 +136,112 @@
         <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
             aria-label="Right text" aria-multiline="true" data-placeholder="Compare this..."></div>
     </main>
-    <section class="seo-content" aria-labelledby="seo-title">
-        <h2 id="seo-title">Compare text online with privacy-first diffing</h2>
-        <p>diffvoid.com helps you compare two texts side by side, highlight exact differences, and detect invisible
-            Unicode characters that often break code, configs, and copied content. Everything runs in your browser, so
-            your text stays on your device.</p>
-        <div class="seo-links">
-            <a href="about.html">How diffvoid works</a>
-            <a href="privacy.html">Privacy details</a>
-            <a href="tos.html">Terms of service</a>
+    <footer class="seo-content" aria-labelledby="seo-title">
+        <div class="seo-text">
+            <h2 id="seo-title">Compare text online with privacy-first diffing</h2>
+            <p>diffvoid.com helps you compare two texts side by side, highlight exact differences, and detect invisible
+                Unicode characters that often break code, configs, and copied content. Everything runs in your browser,
+                so your text stays on your device.</p>
         </div>
-    </section>
+        <nav class="seo-links" aria-label="More information">
+            <a href="/about">About</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/tos">Terms</a>
+            <a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+    </footer>
+    <div id="info-overlay" class="overlay-backdrop">
+        <div id="info-window" class="info-window" role="dialog" aria-modal="true" aria-labelledby="info-title">
+            <header class="info-header">
+                <div>
+                    <h2 id="info-title" class="info-title">diffvoid</h2>
+                    <p class="info-tagline">Your secure place to compare <span class="tagline-diff">texts.</span></p>
+                </div>
+                <button id="info-close-btn" class="info-close-btn" type="button" title="Close" aria-label="Close">
+                    <svg viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                        <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </header>
+
+            <div class="info-content">
+                <section>
+                    <h3>How it works</h3>
+                    <ol class="info-steps">
+                        <li>
+                            <span class="step-num">1</span>
+                            <div><strong>Paste</strong><span>Paste one text into each panel.</span></div>
+                        </li>
+                        <li>
+                            <span class="step-num">2</span>
+                            <div><strong>Compare</strong><span>The diff appears automatically, line by line.</span></div>
+                        </li>
+                        <li>
+                            <span class="step-num">3</span>
+                            <div><strong>Copy</strong><span>Take either side as is, or cleaned of hidden characters.</span></div>
+                        </li>
+                    </ol>
+                </section>
+
+                <section>
+                    <h3>Reading the diff</h3>
+                    <div class="info-legend">
+                        <div class="legend-card">
+                            <span class="legend-sample">hello <span class="diff-mismatch">there</span></span>
+                            <strong>Modified</strong>
+                            <span class="legend-desc">changed characters in red</span>
+                        </div>
+                        <div class="legend-card">
+                            <span class="legend-sample legend-gap" aria-hidden="true"></span>
+                            <strong>Added or missing</strong>
+                            <span class="legend-desc">an empty gap on the other side</span>
+                        </div>
+                        <div class="legend-card">
+                            <span class="legend-sample">a<span class="invisible-nbsp" aria-hidden="true"></span>b</span>
+                            <strong>Invisible</strong>
+                            <span class="legend-desc">hidden spaces and marks</span>
+                        </div>
+                        <div class="legend-card">
+                            <span class="legend-sample">p<span class="confusable-char">а</span>ypal</span>
+                            <strong>Confusable</strong>
+                            <span class="legend-desc">lookalike letters, e.g. Cyrillic</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Good to know</h3>
+                    <ul class="info-facts">
+                        <li>
+                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" /><path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+                            <span><strong>Copy L/R</strong> copies the exact original text. <strong>Clean L/R</strong> appears when invisible characters are found and copies a normalized version.</span>
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v12M5 5.5 2.5 8 5 10.5M11 5.5 13.5 8 11 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            <span>Drag the divider to resize the panels. Double-click it to reset to 50/50.</span>
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.5" /></svg>
+                            <span>Private by design. Your text never leaves your device. No uploads, no tracking.</span>
+                        </li>
+                    </ul>
+                </section>
+            </div>
+
+            <footer class="info-footer">
+                <nav class="info-links" aria-label="More information">
+                    <a href="/about">About</a>
+                    <a href="/privacy">Privacy</a>
+                    <a href="/tos">Terms</a>
+                    <a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener noreferrer">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+                        GitHub
+                    </a>
+                </nav>
+                <span class="info-version">open source · v2.1.0</span>
+            </footer>
+        </div>
+    </div>
     <script src="shared-diff.js"></script>
     <script src="diff-controller.js"></script>
     <script src="virtual-diff.js"></script>

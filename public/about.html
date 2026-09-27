@@ -4,69 +4,165 @@
   See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 -->
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>About - diffvoid.com</title>
   <meta name="description" content="About diffvoid.com: a secure, private, browser-based text comparison tool.">
-  <link rel="canonical" href="https://diffvoid.com/about.html">
+  <link rel="canonical" href="https://diffvoid.com/about">
   <link rel="stylesheet" href="shared.css">
   <script src="theme.js"></script>
 </head>
 
 <body>
+  <div class="topbar">
+    <a class="wordmark" href="https://diffvoid.com/">diffvoid</a>
+    <a class="topbar-link" href="https://diffvoid.com/">Open the app →</a>
+  </div>
+
   <main>
-    <header>
-      <h1>About diffvoid.com</h1>
-      <div class="meta">Version 2.0.0</div>
+    <header class="hero">
+      <h1 class="eyebrow">About diffvoid.com</h1>
+      <p class="display">Your secure place to compare texts.</p>
+      <p class="lead"><strong>diffvoid.com</strong> is a secure, private, browser-based text comparison tool. All
+        processing happens locally in your browser—your text never leaves your device.</p>
+      <a class="cta" href="https://diffvoid.com/">Compare texts <span aria-hidden="true">→</span></a>
+      <div class="meta">Version 2.1.0</div>
     </header>
 
-    <div class="home">
-      <a href="https://diffvoid.com/">← Back to diffvoid.com</a>
-    </div>
-
-    <section>
-      <p>diffvoid.com is a secure, private, browser-based text comparison tool. All processing happens locally in your
-        browser—your text never leaves your device.</p>
+    <section aria-labelledby="how">
+      <h2 id="how">How to use it</h2>
+      <ol class="steps">
+        <li>
+          <span class="step-num">1</span>
+          <div><strong>Paste</strong><span>Paste text into the left and right panels.</span></div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div><strong>Compare</strong><span>The comparison starts automatically.</span></div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div><strong>Read the diff</strong><span>Changes, gaps, invisible and confusable characters are highlighted
+              line by line.</span></div>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <div><strong>Copy</strong><span>Copy either side exactly, or cleaned of invisible characters.</span></div>
+        </li>
+      </ol>
     </section>
 
-    <section>
-      <h2>Key Features</h2>
-      <ul>
-        <li><strong>Privacy first</strong>: No server uploads, no tracking, no analytics. Everything stays in your
-          browser.</li>
-        <li><strong>Line-aware Myers diff</strong>: A first-party Myers implementation preserves exact matching-line
-          anchors when lines are inserted or removed.</li>
-        <li><strong>Bounded row alignment</strong>: Unmatched hunks use deterministic full or banded dynamic programming
-          to pair similar modified lines. If reliable pairing exceeds the shared work budget, the lines are
-          conservatively shown as missing and added.</li>
-        <li><strong>Character-level diff</strong>: Selected modified pairs are compared by grapheme and stored as compact
-          UTF-16 change ranges instead of permanent per-character objects.</li>
-        <li><strong>Invisible character detection</strong>: Highlights zero-width spaces, non-breaking spaces, and other
-          hidden Unicode characters that can cause subtle bugs.</li>
-        <li><strong>Confusable character detection</strong>: Marks common Greek and Cyrillic homographs that look like
-          Latin letters, with tooltips explaining the real Unicode character.</li>
-        <li><strong>Exact and clean copying</strong>: Copy L/R always copies the complete original source after a
-          comparison, including rows outside the visible window and trailing newlines. When invisible characters are
-          detected, Clean L/R also appears to normalize hidden spacing characters and remove soft hyphens and BOM
-          characters.</li>
-        <li><strong>Adjustable panels</strong>: Drag the center divider to adjust left/right panel widths. Double-click
-          to reset to 50/50.</li>
-        <li><strong>Clear button</strong>: One-click to clear both panels and reset to default view.</li>
-        <li><strong>Dark mode</strong>: Toggle between light and dark themes with preference saved locally.</li>
-        <li><strong>Cost-based Web Worker processing</strong>: Comparisons normally run in a background worker. Only
-          input proven small enough may fall back to synchronous processing when a worker cannot be created.</li>
-        <li><strong>Virtualized rendering</strong>: Both panes mount only the same visible row window, with hard row and
-          DOM-node caps and rendering work split across animation frames.</li>
-        <li><strong>Long-line previews</strong>: Dense lines over 20,000 code units are shown as paged previews around
-          their changes while exact copying continues to use the complete source.</li>
+    <section aria-labelledby="read">
+      <h2 id="read">How to read the diff</h2>
+      <ul class="legend">
+        <li>
+          <span class="sample">same text</span>
+          <div><strong>Matching lines</strong> <span>No background highlight - text is identical.</span></div>
+        </li>
+        <li>
+          <span class="sample sample-mismatch">changed</span>
+          <div><strong>Modified lines</strong> <span>Red background with precise red character ranges when the detail
+              budget permits.</span></div>
+        </li>
+        <li>
+          <span class="sample sample-gap">&nbsp;</span>
+          <div><strong>Added or missing lines</strong> <span>The source line is highlighted on one side and aligned
+              with a highlighted empty gap on the other.</span></div>
+        </li>
+        <li>
+          <span class="sample sample-match">100% Match</span>
+          <div><strong>Difference counter</strong> <span>Counts changed visual rows: modified, added, and missing
+              rows.</span></div>
+        </li>
+        <li>
+          <span class="sample sample-invisible">a<b>|</b>b <b>[NBSP]</b></span>
+          <div><strong>Invisible characters</strong> <span>Shown as symbols like <code>|</code>, <code>[ZWSP]</code>,
+              or red boxes for spaces in diffs.</span></div>
+        </li>
+        <li>
+          <span class="sample sample-confusable">p<b>а</b>ypal</span>
+          <div><strong>Confusable characters</strong> <span>Shown with a dotted underline, a small marker, and a
+              tooltip that names the actual Unicode character.</span></div>
+        </li>
+        <li>
+          <span class="sample">‹ … ›</span>
+          <div><strong>Reduced long-line preview</strong> <span>Previous/Next controls move between bounded views
+              around changes; preview ellipses are not part of the source text.</span></div>
+        </li>
+        <li>
+          <span class="sample">Copy L</span>
+          <div><strong>Copy L/R</strong> <span>Copies the exact original side. <strong>Clean L/R</strong> appears when
+              invisible characters are detected and returns a normalized version instead.</span></div>
+        </li>
       </ul>
     </section>
 
-    <section>
-      <h2>How It Works</h2>
+    <section aria-labelledby="features">
+      <h2 id="features">Key features</h2>
+      <ul class="features">
+        <li><strong>Privacy first</strong><span>No server uploads, no tracking, no analytics. Everything stays in your
+            browser.</span></li>
+        <li><strong>Line-aware Myers diff</strong><span>A first-party Myers implementation preserves exact matching-line
+            anchors when lines are inserted or removed.</span></li>
+        <li><strong>Bounded row alignment</strong><span>Unmatched hunks use deterministic full or banded dynamic
+            programming to pair similar modified lines. If reliable pairing exceeds the shared work budget, the lines
+            are conservatively shown as missing and added.</span></li>
+        <li><strong>Character-level diff</strong><span>Selected modified pairs are compared by grapheme and stored as
+            compact UTF-16 change ranges instead of permanent per-character objects.</span></li>
+        <li><strong>Invisible character detection</strong><span>Highlights zero-width spaces, non-breaking spaces, and
+            other hidden Unicode characters that can cause subtle bugs.</span></li>
+        <li><strong>Confusable character detection</strong><span>Marks common Greek and Cyrillic homographs that look
+            like Latin letters, with tooltips explaining the real Unicode character.</span></li>
+        <li><strong>Exact and clean copying</strong><span>Copy L/R always copies the complete original source after a
+            comparison, including rows outside the visible window and trailing newlines. When invisible characters are
+            detected, Clean L/R also appears to normalize hidden spacing characters and remove soft hyphens and BOM
+            characters.</span></li>
+        <li><strong>Adjustable panels</strong><span>Drag the center divider to adjust left/right panel widths.
+            Double-click to reset to 50/50.</span></li>
+        <li><strong>Clear button</strong><span>One-click to clear both panels and reset to default view.</span></li>
+        <li><strong>Dark mode</strong><span>Follows your system theme, or toggle between light and dark with the
+            preference saved locally.</span></li>
+        <li><strong>Cost-based Web Worker processing</strong><span>Comparisons normally run in a background worker.
+            Only input proven small enough may fall back to synchronous processing when a worker cannot be
+            created.</span></li>
+        <li><strong>Virtualized rendering</strong><span>Both panes mount only the same visible row window, with hard
+            row and DOM-node caps and rendering work split across animation frames.</span></li>
+        <li><strong>Long-line previews</strong><span>Dense lines over 20,000 code units are shown as paged previews
+            around their changes while exact copying continues to use the complete source.</span></li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="invisible">
+      <h2 id="invisible">Detected invisible characters</h2>
+      <ul class="markers">
+        <li><code>|</code>Zero-width space (U+200B)</li>
+        <li><code>[ZWNJ]</code>Zero-width non-joiner (U+200C)</li>
+        <li><code>[ZWJ]</code>Zero-width joiner (U+200D)</li>
+        <li><code>[NBSP]</code>Non-breaking space (U+00A0)</li>
+        <li><code>[HS]</code>Hair space (U+200A)</li>
+        <li><code>[THIN]</code>Thin space (U+2009)</li>
+        <li><code>[EN]</code>En space (U+2002)</li>
+        <li><code>[EM]</code>Em space (U+2003)</li>
+        <li><code>[SHY]</code>Soft hyphen (U+00AD)</li>
+        <li><code>[BOM]</code>BOM / zero-width no-break space (U+FEFF)</li>
+      </ul>
+      <p class="muted">And many more Unicode whitespace characters.</p>
+    </section>
+
+    <section aria-labelledby="confusable">
+      <h2 id="confusable">Detected confusable characters</h2>
+      <p>Confusable characters are visible letters from another script that can look like ordinary Latin letters.
+        diffvoid marks common Greek and Cyrillic lookalikes, such as Cyrillic <code>А</code> (U+0410) that looks like
+        Latin <code>A</code>, with a dotted underline and a tooltip.</p>
+      <p class="muted">Invisible characters are hidden or spacing-related. Confusable characters are visible, but easy
+        to misread in code, domains, copied text, and identifiers.</p>
+    </section>
+
+    <section aria-labelledby="internals">
+      <h2 id="internals">Under the hood</h2>
       <p>A lightweight scan first validates the input and estimates its cost. Accepted comparisons normally run in a
         same-origin Web Worker. If worker creation is unavailable, only a comparison classified as safely small may
         run synchronously; heavy input is stopped with an instruction to serve the app over HTTP or compare smaller
@@ -92,62 +188,37 @@
         in-browser Worker, but there is no backend processing and no network transmission of that text.</p>
     </section>
 
-    <section>
-      <h2>Detected Invisible Characters</h2>
-      <ul>
-        <li>Zero-width space (U+200B)</li>
-        <li>Zero-width non-joiner (U+200C)</li>
-        <li>Zero-width joiner (U+200D)</li>
-        <li>Non-breaking space (U+00A0)</li>
-        <li>Hair space, thin space, en space, em space (U+200A, U+2009, U+2002, U+2003)</li>
-        <li>Soft hyphen (U+00AD)</li>
-        <li>BOM / zero-width no-break space (U+FEFF)</li>
-        <li>And many more Unicode whitespace characters</li>
-      </ul>
+    <section aria-labelledby="privacy">
+      <h2 id="privacy">Private by design</h2>
+      <p>diffvoid has no ads, no analytics and no cookies. Your text stays in your browser, and only your theme
+        preference is saved locally.</p>
+      <p class="muted">Read the full <a href="/privacy">Privacy Policy</a> and <a href="/tos">Terms of
+          Service</a>.</p>
     </section>
 
-    <section>
-      <h2>Detected Confusable Characters</h2>
-      <p>Confusable characters are visible letters from another script that can look like ordinary Latin letters.
-        diffvoid marks common Greek and Cyrillic lookalikes, such as Cyrillic <code>А</code> (U+0410) that looks like
-        Latin <code>A</code>, with a dotted underline and a tooltip.</p>
-      <p>Invisible characters are hidden or spacing-related. Confusable characters are visible, but easy to misread in
-        code, domains, copied text, and identifiers.</p>
-    </section>
-
-    <section>
-      <h2>How to Read the Diff</h2>
-      <ul>
-        <li><strong>Matching lines</strong>: No background highlight - text is identical.</li>
-        <li><strong>Modified lines</strong>: Red background with precise red character ranges when the detail budget
-          permits.</li>
-        <li><strong>Added or missing lines</strong>: The source line is highlighted on one side and aligned with a
-          highlighted empty gap on the other.</li>
-        <li><strong>Difference counter</strong>: Counts changed visual rows: modified, added, and missing rows.</li>
-        <li><strong>Invisible characters</strong>: Shown as symbols like <code>|</code>, <code>[ZWSP]</code>, or red
-          boxes for spaces in diffs.</li>
-        <li><strong>Confusable characters</strong>: Shown with a dotted underline, a small marker, and a tooltip that
-          names the actual Unicode character.</li>
-        <li><strong>Reduced long-line preview</strong>: Previous/Next controls move between bounded views around changes;
-          preview ellipses are not part of the source text.</li>
-        <li><strong>Copy L/R</strong>: Copies the exact original side. <strong>Clean L/R</strong> appears when invisible
-          characters are detected and returns a normalized version instead.</li>
-      </ul>
-    </section>
-
-    <section>
-      <h2>Open Source</h2>
-      <p>diffvoid.com is open source. You can inspect the code, verify the privacy claims, or contribute:</p>
-      <p><a href="https://github.com/timoheimonen/diffvoid" target="_blank"
+    <section aria-labelledby="source">
+      <h2 id="source">Open source</h2>
+      <p>diffvoid.com is open source. You can inspect the code, verify the privacy claims, or contribute:
+        <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
           rel="noopener">github.com/timoheimonen/diffvoid</a></p>
     </section>
 
-    <section>
-      <h2>Contact</h2>
-      <p>Created by Timo Heimonen</p>
-      <p>Email: <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></p>
+    <section aria-labelledby="contact">
+      <h2 id="contact">Contact</h2>
+      <p>Created by Timo Heimonen · <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></p>
     </section>
   </main>
+
+  <footer>
+    <span>© 2026 Timo Heimonen</span>
+    <nav aria-label="Site">
+      <a href="https://diffvoid.com/">App</a>
+      <a href="/about">About</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/tos">Terms</a>
+      <a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </footer>
 </body>
 
 </html>

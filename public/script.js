@@ -255,6 +255,68 @@
             });
         }
 
+        const infoButton = document.getElementById('info-btn');
+        const infoOverlay = document.getElementById('info-overlay');
+        const infoWindow = document.getElementById('info-window');
+        const infoCloseButton = document.getElementById('info-close-btn');
+
+        if (infoButton && infoOverlay && infoWindow && infoCloseButton) {
+            let infoReturnFocus = null;
+            let pointerDownOnBackdrop = false;
+
+            function isInfoOpen() {
+                return infoOverlay.classList.contains('open');
+            }
+
+            function openInfo() {
+                infoReturnFocus = document.activeElement;
+                infoOverlay.classList.add('open');
+                infoButton.setAttribute('aria-expanded', 'true');
+                infoCloseButton.focus({ preventScroll: true });
+            }
+
+            function closeInfo() {
+                infoOverlay.classList.remove('open');
+                infoButton.setAttribute('aria-expanded', 'false');
+                const canReturn = infoReturnFocus && infoReturnFocus !== document.body && document.contains(infoReturnFocus);
+                const target = canReturn ? infoReturnFocus : infoButton;
+                target.focus({ preventScroll: true });
+                infoReturnFocus = null;
+            }
+
+            infoButton.addEventListener('click', openInfo);
+            infoCloseButton.addEventListener('click', closeInfo);
+
+            // Keep Tab focus inside the dialog while it is open
+            infoWindow.addEventListener('keydown', function (event) {
+                if (event.key !== 'Tab') return;
+                const focusables = infoWindow.querySelectorAll('button, a[href]');
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && isInfoOpen()) closeInfo();
+            });
+
+            // Close on a click that both starts and ends on the backdrop, so a
+            // text selection dragged out of the dialog does not close it
+            infoOverlay.addEventListener('pointerdown', function (event) {
+                pointerDownOnBackdrop = event.target === infoOverlay;
+            });
+            infoOverlay.addEventListener('click', function (event) {
+                if (pointerDownOnBackdrop && event.target === infoOverlay) closeInfo();
+                pointerDownOnBackdrop = false;
+            });
+        }
+
         async function copyText(text, side, button) {
             try {
                 await navigator.clipboard.writeText(text);

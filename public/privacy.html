@@ -4,7 +4,7 @@
   See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 -->
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -12,100 +12,122 @@
   <title>Privacy Policy - diffvoid.com</title>
   <meta name="description"
     content="Privacy policy for diffvoid.com: no ads, no analytics, all text processing happens locally in your browser.">
-  <link rel="canonical" href="https://diffvoid.com/privacy.html">
+  <link rel="canonical" href="https://diffvoid.com/privacy">
   <link rel="stylesheet" href="shared.css">
   <script src="theme.js"></script>
 </head>
 
 <body>
+  <div class="topbar">
+    <a class="wordmark" href="https://diffvoid.com/">diffvoid</a>
+    <a class="topbar-link" href="https://diffvoid.com/">Open the app →</a>
+  </div>
+
   <main>
-    <header>
+    <header class="doc-hero">
+      <p class="eyebrow">Legal</p>
       <h1>Privacy Policy</h1>
-      <div class="meta">Effective date: 2026-04-02</div>
+      <p class="doc-meta">Effective date: 2026-04-02</p>
+      <p class="lead">diffvoid.com is a secure browser-based text comparison tool. <strong>We do not run ads, we do not
+          use analytics, and we do not sell personal data.</strong> Your text never leaves your browser.</p>
     </header>
 
-    <div class="home">
-      <a href="https://diffvoid.com/">← Back to diffvoid.com</a>
+    <div class="prose">
+
+      <section>
+        <h2>Summary</h2>
+        <div class="cards">
+          <div class="card">
+            <h3>No trackers / analytics</h3>
+            <p>We do not use third-party analytics scripts, tracking pixels, or advertising beacons.</p>
+          </div>
+          <div class="card">
+            <h3>No accounts</h3>
+            <p>There is no login and no user profile.</p>
+          </div>
+          <div class="card">
+            <h3>Local processing only</h3>
+            <p>Text is processed only by the page and, for normal comparisons, its same-origin in-browser Web Worker.
+              Compared text is never sent to any server.</p>
+          </div>
+          <div class="card">
+            <h3>Optional local storage</h3>
+            <p>Your theme preference is stored locally in your browser and never sent to a server.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What information we collect</h2>
+        <p><strong>We do not intentionally collect personal information</strong> (such as your name, email address, or
+          precise location) through the diffvoid.com app itself. We also do not collect or store the text you compare.</p>
+      </section>
+
+      <section>
+        <h2>Local device storage</h2>
+        <p>The app stores your preferences <strong>locally in your browser</strong> using Local Storage. The following
+          key is used:</p>
+        <ul>
+          <li><code>diffvoidcom_theme</code> - color theme preference (<code>"dark"</code> or <code>"light"</code>)</li>
+        </ul>
+        <p>This data never leaves your device. You can clear it at any time via your browser's site data settings.</p>
+      </section>
+
+      <section>
+        <h2>Text processing</h2>
+        <p>All text comparison is performed <strong>entirely in your browser</strong> using JavaScript. The page may pass
+          the left and right texts to a same-origin Web Worker, which is a separate browser execution context used to keep
+          heavy work away from the interface thread. This is local inter-thread messaging, not a network request.</p>
+        <p>Your compared text is never uploaded to, stored on, or processed by any server. The worker returns a compact
+          result containing row indexes and numeric change ranges rather than source text or generated HTML. The original
+          text remains in the page only for display, selection, and copying.</p>
+      </section>
+
+      <section>
+        <h2>Hosting/provider logs</h2>
+        <p>diffvoid.com is hosted on <strong>Cloudflare Pages</strong>. Cloudflare may
+          process <strong>standard server/edge request data</strong> (such as IP address, user-agent, request path,
+          timestamps, and similar operational metadata) in order to deliver the site, protect it from abuse, and operate
+          the service.</p>
+        <p>We do not add trackers on top of that, and we do not use these logs for advertising or selling data.</p>
+      </section>
+
+      <section>
+        <h2>Open source verification</h2>
+        <p>The project is open source, and you can verify the behavior described above in:</p>
+        <ul>
+          <li><code>public/index.html</code> - UI structure</li>
+          <li><code>public/script.js</code> - input state and client-side orchestration</li>
+          <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
+          <li><code>public/diff-controller.js</code> - worker lifecycle, timeouts, cancellation, and stale-result protection</li>
+          <li><code>public/worker.js</code> - same-origin worker protocol and comparison execution</li>
+          <li><code>public/virtual-diff.js</code> - source-safe virtual rendering, selection, and copy behavior</li>
+          <li><code>public/style.css</code> - styling</li>
+        </ul>
+        <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
+            rel="noopener">github.com/timoheimonen/diffvoid</a></p>
+      </section>
+
+      <section>
+        <h2>Contact</h2>
+        <p>If you have privacy questions, contact:</p>
+        <ul>
+          <li>Timo Heimonen - <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></li>
+        </ul>
+      </section>
     </div>
-
-    <section>
-      <p>diffvoid.com is a secure browser-based text comparison tool. <strong>We do not run ads, we do not use
-          analytics, and we do not sell
-          personal data.</strong> Your text never leaves your browser.</p>
-    </section>
-
-    <section>
-      <h2>Summary</h2>
-      <ul>
-        <li><strong>No trackers / analytics</strong>: We do not use third-party analytics scripts, tracking pixels, or
-          advertising beacons.</li>
-        <li><strong>No accounts</strong>: There is no login and no user profile.</li>
-        <li><strong>Local processing only</strong>: Text is processed only by the page and, for normal comparisons, its
-          same-origin in-browser Web Worker. Compared text is never sent to any server.</li>
-        <li><strong>Optional local storage</strong>: Your theme preference is stored locally in
-          your browser and never sent to a server.</li>
-      </ul>
-    </section>
-
-    <section>
-      <h2>What information we collect</h2>
-      <p><strong>We do not intentionally collect personal information</strong> (such as your name, email address, or
-        precise location) through the diffvoid.com app itself. We also do not collect or store the text you compare.</p>
-    </section>
-
-    <section>
-      <h2>Local device storage</h2>
-      <p>The app stores your preferences <strong>locally in your browser</strong> using Local Storage. The following
-        key is used:</p>
-      <ul>
-        <li><code>diffvoidcom_theme</code> - color theme preference (<code>"dark"</code> or <code>"light"</code>)</li>
-      </ul>
-      <p>This data never leaves your device. You can clear it at any time via your browser's site data settings.</p>
-    </section>
-
-    <section>
-      <h2>Text processing</h2>
-      <p>All text comparison is performed <strong>entirely in your browser</strong> using JavaScript. The page may pass
-        the left and right texts to a same-origin Web Worker, which is a separate browser execution context used to keep
-        heavy work away from the interface thread. This is local inter-thread messaging, not a network request.</p>
-      <p>Your compared text is never uploaded to, stored on, or processed by any server. The worker returns a compact
-        result containing row indexes and numeric change ranges rather than source text or generated HTML. The original
-        text remains in the page only for display, selection, and copying.</p>
-    </section>
-
-    <section>
-      <h2>Hosting/provider logs</h2>
-      <p>diffvoid.com is hosted on <strong>Cloudflare Pages</strong>. Cloudflare may
-        process <strong>standard server/edge request data</strong> (such as IP address, user-agent, request path,
-        timestamps, and similar operational metadata) in order to deliver the site, protect it from abuse, and operate
-        the service.</p>
-      <p>We do not add trackers on top of that, and we do not use these logs for advertising or selling data.</p>
-    </section>
-
-    <section>
-      <h2>Open source verification</h2>
-      <p>The project is open source, and you can verify the behavior described above in:</p>
-      <ul>
-        <li><code>public/index.html</code> - UI structure</li>
-        <li><code>public/script.js</code> - input state and client-side orchestration</li>
-        <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
-        <li><code>public/diff-controller.js</code> - worker lifecycle, timeouts, cancellation, and stale-result protection</li>
-        <li><code>public/worker.js</code> - same-origin worker protocol and comparison execution</li>
-        <li><code>public/virtual-diff.js</code> - source-safe virtual rendering, selection, and copy behavior</li>
-        <li><code>public/style.css</code> - styling</li>
-      </ul>
-      <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
-          rel="noopener">github.com/timoheimonen/diffvoid</a></p>
-    </section>
-
-    <section>
-      <h2>Contact</h2>
-      <p>If you have privacy questions, contact:</p>
-      <ul>
-        <li>Timo Heimonen - <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></li>
-      </ul>
-    </section>
   </main>
+
+  <footer>
+    <span>© 2026 Timo Heimonen</span>
+    <nav aria-label="Site">
+      <a href="https://diffvoid.com/">App</a>
+      <a href="/about">About</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/tos">Terms</a>
+      <a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </footer>
 </body>
 
 </html>
