@@ -18,7 +18,7 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
 - **Cost-based worker routing**: Comparisons normally run in a Web Worker. A synchronous fallback is allowed only for input proven small enough when a worker cannot be created; worker-required input is never retried on the main thread.
 - **Input and work limits**: Each side supports up to 25,000 lines, 2,000,000 characters, and 100,000 characters per line. Shared Myers, alignment, character-diff, range, and rendering budgets prevent unbounded work.
 - **Adjustable divider**: Drag the divider to resize the panels. Double-click it or select Clear to restore the 50/50 layout.
-- **Dark/light mode**: The selected theme is stored locally.
+- **Dark/light mode**: Follows the system theme until you pick one; the selected theme is stored locally.
 - **Privacy-first**: No ads, analytics, cookies, tracking, or transmission of compared text.
 
 ## How to Use
@@ -105,7 +105,7 @@ The interface requires a modern browser with ES6 JavaScript, `Intl.Segmenter` in
 - Compared text is passed only between the page and an in-browser same-origin Worker
 - Theme preference is the only value stored in Local Storage
 
-See the [Privacy Policy](https://diffvoid.com/privacy.html), [Terms of Service](https://diffvoid.com/tos.html), and [About](https://diffvoid.com/about.html) pages for details.
+See the [Privacy Policy](https://diffvoid.com/privacy), [Terms of Service](https://diffvoid.com/tos), and [About](https://diffvoid.com/about) pages for details.
 
 ## Development
 
@@ -145,7 +145,7 @@ Serve `public/` over HTTP for the complete application:
 python3 -m http.server 8000 --directory public
 ```
 
-Then visit `http://localhost:8000`.
+Then visit `http://localhost:8000`. The static pages are linked without the `.html` extension (`/about`, `/privacy`, `/tos`), which Cloudflare resolves in production; a plain local server needs the extension, so open e.g. `http://localhost:8000/about.html` there.
 
 Opening `public/index.html` directly with a `file://` URL is not recommended because browsers commonly block local Web Workers. A comparison classified as safely small can fall back to synchronous processing if worker creation fails. A larger comparison deliberately stops with an instruction to use HTTP or compare smaller sections; it is never moved to the main thread.
 

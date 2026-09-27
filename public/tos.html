@@ -4,7 +4,7 @@
   See LICENSE file for full terms at github.com/timoheimonen/diffvoid
 -->
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -12,105 +12,118 @@
   <title>Terms of Service - diffvoid.com</title>
   <meta name="description"
     content="Terms of Service for diffvoid.com: free secure text comparison tool, no accounts, no payments, provided as-is.">
-  <link rel="canonical" href="https://diffvoid.com/tos.html">
+  <link rel="canonical" href="https://diffvoid.com/tos">
   <link rel="stylesheet" href="shared.css">
   <script src="theme.js"></script>
 </head>
 
 <body>
+  <div class="topbar">
+    <a class="wordmark" href="https://diffvoid.com/">diffvoid</a>
+    <a class="topbar-link" href="https://diffvoid.com/">Open the app →</a>
+  </div>
+
   <main>
-    <header>
+    <header class="doc-hero">
+      <p class="eyebrow">Legal</p>
       <h1>Terms of Service</h1>
-      <div class="meta">Effective date: 2026-04-02</div>
+      <p class="doc-meta">Effective date: 2026-04-02</p>
+      <p class="lead">diffvoid.com is a free, secure text comparison tool. By using this site you agree to these terms. If you do
+        not agree, please stop using the site.</p>
     </header>
 
-    <div class="home">
-      <a href="https://diffvoid.com/">← Back to diffvoid.com</a>
+    <div class="prose">
+
+      <section>
+        <h2>Description of service</h2>
+        <p>diffvoid.com provides a browser-based text comparison tool where you can compare two texts side-by-side to see
+          differences. All processing happens locally in your browser - your text is never sent to any server. The
+          service is offered free of charge with no user accounts, no subscriptions, and no payments of any kind.</p>
+      </section>
+
+      <section>
+        <h2>Permitted use</h2>
+        <p>You may use diffvoid.com for personal or commercial purposes.</p>
+        <p>You may not use the service in any way that:</p>
+        <ul>
+          <li>Violates applicable laws or regulations.</li>
+          <li>Attempts to disrupt, overload, or interfere with the site's infrastructure.</li>
+          <li>Misrepresents the origin of the service or impersonates diffvoid.com.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>No warranty</h2>
+        <p>The service is provided <strong>"as is"</strong> and <strong>"as available"</strong> without warranty of any
+          kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular
+          purpose, accuracy, or non-infringement. We do not guarantee that the site will be available at any specific time
+          or free from errors.</p>
+      </section>
+
+      <section>
+        <h2>Limitation of liability</h2>
+        <p>To the maximum extent permitted by applicable law, the authors shall not be liable for
+          any direct, indirect, incidental, special, consequential, or exemplary damages arising from your use of - or
+          inability to use - this service, even if advised of the possibility of such damages.</p>
+      </section>
+
+      <section>
+        <h2>Third-party hosting</h2>
+        <p>The site is hosted on <strong>Cloudflare Pages</strong>. Cloudflare may process standard edge request data
+          (such as IP address,
+          user-agent, request path, and timestamps) as part of delivering and protecting the service. This is outside our
+          direct control. For more information, see <a href="https://www.cloudflare.com/privacypolicy/" target="_blank"
+            rel="noopener">Cloudflare's privacy policy</a>.</p>
+      </section>
+
+      <section>
+        <h2>Privacy</h2>
+        <p>Our data practices are described in the <a href="/privacy">Privacy Policy</a>. In short: no ads, no
+          analytics, no personal data collected by us.</p>
+      </section>
+
+      <section>
+        <h2>Open source</h2>
+        <p>The complete source code for this project is publicly available and can be independently verified:</p>
+        <ul>
+          <li><code>public/index.html</code> - UI structure</li>
+          <li><code>public/script.js</code> - input state and application orchestration</li>
+          <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
+          <li><code>public/diff-controller.js</code> - worker lifecycle, cancellation, and stale-result protection</li>
+          <li><code>public/worker.js</code> - worker protocol and comparison execution</li>
+          <li><code>public/virtual-diff.js</code> - virtual rendering, selection, and copy behavior</li>
+          <li><code>public/style.css</code> - styling</li>
+        </ul>
+        <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
+            rel="noopener">github.com/timoheimonen/diffvoid</a></p>
+      </section>
+
+      <section>
+        <h2>Changes to these terms</h2>
+        <p>These terms may be updated occasionally. When they are, the effective date at the top of this page will be
+          revised. Continued use of the site after a change constitutes acceptance of the updated terms.</p>
+      </section>
+
+      <section>
+        <h2>Contact</h2>
+        <p>Questions about these terms:</p>
+        <ul>
+          <li>Timo Heimonen - <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></li>
+        </ul>
+      </section>
     </div>
-
-    <section>
-      <p>diffvoid.com is a free, secure text comparison tool. By using this site you agree to these terms. If you do
-        not agree, please stop using the site.</p>
-    </section>
-
-    <section>
-      <h2>Description of service</h2>
-      <p>diffvoid.com provides a browser-based text comparison tool where you can compare two texts side-by-side to see
-        differences. All processing happens locally in your browser - your text is never sent to any server. The
-        service is offered free of charge with no user accounts, no subscriptions, and no payments of any kind.</p>
-    </section>
-
-    <section>
-      <h2>Permitted use</h2>
-      <p>You may use diffvoid.com for personal or commercial purposes.</p>
-      <p>You may not use the service in any way that:</p>
-      <ul>
-        <li>Violates applicable laws or regulations.</li>
-        <li>Attempts to disrupt, overload, or interfere with the site's infrastructure.</li>
-        <li>Misrepresents the origin of the service or impersonates diffvoid.com.</li>
-      </ul>
-    </section>
-
-    <section>
-      <h2>No warranty</h2>
-      <p>The service is provided <strong>"as is"</strong> and <strong>"as available"</strong> without warranty of any
-        kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular
-        purpose, accuracy, or non-infringement. We do not guarantee that the site will be available at any specific time
-        or free from errors.</p>
-    </section>
-
-    <section>
-      <h2>Limitation of liability</h2>
-      <p>To the maximum extent permitted by applicable law, the authors shall not be liable for
-        any direct, indirect, incidental, special, consequential, or exemplary damages arising from your use of - or
-        inability to use - this service, even if advised of the possibility of such damages.</p>
-    </section>
-
-    <section>
-      <h2>Third-party hosting</h2>
-      <p>The site is hosted on <strong>Cloudflare Pages</strong>. Cloudflare may process standard edge request data
-        (such as IP address,
-        user-agent, request path, and timestamps) as part of delivering and protecting the service. This is outside our
-        direct control. For more information, see <a href="https://www.cloudflare.com/privacypolicy/" target="_blank"
-          rel="noopener">Cloudflare's privacy policy</a>.</p>
-    </section>
-
-    <section>
-      <h2>Privacy</h2>
-      <p>Our data practices are described in the <a href="/privacy.html">Privacy Policy</a>. In short: no ads, no
-        analytics, no personal data collected by us.</p>
-    </section>
-
-    <section>
-      <h2>Open source</h2>
-      <p>The complete source code for this project is publicly available and can be independently verified:</p>
-      <ul>
-        <li><code>public/index.html</code> - UI structure</li>
-        <li><code>public/script.js</code> - input state and application orchestration</li>
-        <li><code>public/shared-diff.js</code> - validation, comparison algorithms, budgets, and compact result model</li>
-        <li><code>public/diff-controller.js</code> - worker lifecycle, cancellation, and stale-result protection</li>
-        <li><code>public/worker.js</code> - worker protocol and comparison execution</li>
-        <li><code>public/virtual-diff.js</code> - virtual rendering, selection, and copy behavior</li>
-        <li><code>public/style.css</code> - styling</li>
-      </ul>
-      <p>Repository: <a href="https://github.com/timoheimonen/diffvoid" target="_blank"
-          rel="noopener">github.com/timoheimonen/diffvoid</a></p>
-    </section>
-
-    <section>
-      <h2>Changes to these terms</h2>
-      <p>These terms may be updated occasionally. When they are, the effective date at the top of this page will be
-        revised. Continued use of the site after a change constitutes acceptance of the updated terms.</p>
-    </section>
-
-    <section>
-      <h2>Contact</h2>
-      <p>Questions about these terms:</p>
-      <ul>
-        <li>Timo Heimonen - <a href="mailto:timo.heimonen@proton.me">timo.heimonen@proton.me</a></li>
-      </ul>
-    </section>
   </main>
+
+  <footer>
+    <span>© 2026 Timo Heimonen</span>
+    <nav aria-label="Site">
+      <a href="https://diffvoid.com/">App</a>
+      <a href="/about">About</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/tos">Terms</a>
+      <a href="https://github.com/timoheimonen/diffvoid" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </footer>
 </body>
 
 </html>
