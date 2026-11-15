@@ -19,6 +19,8 @@ const VIRTUAL_DIFF_ROW_HEIGHT = 21;
 const VIRTUAL_DIFF_PREVIEW_CONTEXT = 256;
 const VIRTUAL_DIFF_RENDER_CHUNK_UNITS = 32;
 
+const VIRTUAL_EQUIVALENT_TITLE = 'Same characters in a different Unicode normalization form (NFC/NFD)';
+
 const VIRTUAL_INVISIBLE_META = Object.freeze({
     0x00A0: { cls: 'invisible-nbsp', title: 'Non-breaking space (U+00A0)' },
     0x00AD: { cls: 'invisible-shy', title: 'Soft hyphen (U+00AD)' },
@@ -134,6 +136,15 @@ function virtualLineBounds(source, lineStarts, lineIndex) {
     return { start: start, end: end };
 }
 
+// The text of a line as the comparison sees it: without the carriage return
+// of a CRLF line ending.
+function virtualComparedLine(source, bounds) {
+    const hasLineFeed = bounds.end < source.length;
+    const end = hasLineFeed && bounds.end > bounds.start
+        && source.charCodeAt(bounds.end - 1) === 0x000D ? bounds.end - 1 : bounds.end;
+    return source.slice(bounds.start, end);
+}
+
 function virtualNormalizeSources(sources) {
     const value = sources || {};
     return {
@@ -207,6 +218,8 @@ function createVirtualDiffView(options) {
     const cancelFrame = settings.cancelAnimationFrame;
     const now = settings.now || performance.now.bind(performance);
     const cleanText = settings.stripInvisibleCharacters;
+    const findEquivalentRanges = typeof settings.findEquivalentRanges === 'function'
+        ? settings.findEquivalentRanges : null;
     const onRenderingReduced = typeof settings.onRenderingReduced === 'function'
         ? settings.onRenderingReduced : function () {};
     const estimatedCharacterWidth = Math.max(1, Number(settings.estimatedCharacterWidth) || 8);
@@ -426,10 +439,56 @@ function createVirtualDiffView(options) {
         return api;
     }
 
+    // Flags for the changed ranges of a row that differ from the other side
+    // only in Unicode normalization, by the same rule the model counts with.
+    function equivalentRangeFlags(row) {
+        if (!findEquivalentRanges) return null;
+        const leftBounds = virtualLineBounds(sources.left, model.leftLineStarts, row.leftLineIndex);
+        const rightBounds = virtualLineBounds(sources.right, model.rightLineStarts, row.rightLineIndex);
+        if (!leftBounds || !rightBounds) return null;
+        if (row.detailMode !== 'precise') {
+            // A whole-line row is one range per side: the line without its line ending.
+            const leftLine = virtualComparedLine(sources.left, leftBounds);
+            const rightLine = virtualComparedLine(sources.right, rightBounds);
+            return findEquivalentRanges(
+                leftLine, [0, leftLine.length], 0, 1,
+                rightLine, [0, rightLine.length], 0, 1
+            );
+        }
+        if (!row.leftRangeCount || !row.rightRangeCount) return null;
+        return findEquivalentRanges(
+            sources.left.slice(leftBounds.start, leftBounds.end),
+            model.changeBounds, row.leftRangeOffset, row.leftRangeCount,
+            sources.right.slice(rightBounds.start, rightBounds.end),
+            model.changeBounds, row.rightRangeOffset, row.rightRangeCount
+        );
+    }
+
+    // A moved line that was also edited: a removed or added row that knows its
+    // counterpart and carries the ranges changed on the way.
+    function isMovedChangedRow(row, side) {
+        if (side === 'left') {
+            return row.type === 'missing' && Number.isInteger(row.movedTo)
+                && Number.isInteger(row.leftRangeOffset);
+        }
+        return row.type === 'added' && Number.isInteger(row.movedFrom)
+            && Number.isInteger(row.rightRangeOffset);
+    }
+
     function getRowRanges(row, side, lineLength) {
-        if (row.type === 'added' && side === 'right') return lineLength ? [{ start: 0, end: lineLength }] : [];
-        if (row.type !== 'modified') return [];
-        if (row.detailMode !== 'precise') return lineLength ? [{ start: 0, end: lineLength }] : [];
+        const movedChanged = isMovedChangedRow(row, side);
+        // The text of a plainly moved line is unchanged, so nothing inside it is marked.
+        if (!movedChanged) {
+            if (row.type === 'added' && side === 'right' && Number.isInteger(row.movedFrom)) return [];
+            if (row.type === 'added' && side === 'right') return lineLength ? [{ start: 0, end: lineLength }] : [];
+            if (row.type !== 'modified') return [];
+            if (row.detailMode !== 'precise') {
+                const whole = equivalentRangeFlags(row);
+                return lineLength ? [{ start: 0, end: lineLength, equivalent: !!whole }] : [];
+            }
+        }
+        const equivalent = movedChanged ? null : equivalentRangeFlags(row);
+        const flags = equivalent ? equivalent[side] : null;
         const offsetName = side === 'left' ? 'leftRangeOffset' : 'rightRangeOffset';
         const countName = side === 'left' ? 'leftRangeCount' : 'rightRangeCount';
         const offset = virtualFiniteInteger(row[offsetName], 0);
@@ -440,7 +499,9 @@ function createVirtualDiffView(options) {
             if (poolOffset + 1 >= model.changeBounds.length) break;
             const start = virtualClamp(model.changeBounds[poolOffset], 0, lineLength);
             const end = virtualClamp(model.changeBounds[poolOffset + 1], start, lineLength);
-            if (end > start) ranges.push({ start: start, end: end });
+            if (end > start) {
+                ranges.push({ start: start, end: end, equivalent: !!(flags && flags[i]) });
+            }
         }
         return ranges;
     }
@@ -477,6 +538,15 @@ function createVirtualDiffView(options) {
         if (code === 0x0020 && changed) {
             return { cls: 'invisible-regular-space', title: 'Space (U+0020)' };
         }
+        // A carriage return before a line feed is part of the line ending and
+        // never lies inside a change; one that does is stray content.
+        // A changed tab has no ink of its own; the marker keeps its width.
+        if (code === 0x0009 && changed) {
+            return { cls: 'invisible-tab', title: 'Tab (U+0009)', keepText: true };
+        }
+        if (code === 0x000D && changed) {
+            return { cls: 'invisible-cr', title: 'Carriage return (U+000D)' };
+        }
         if (VIRTUAL_INVISIBLE_META[code]) return VIRTUAL_INVISIBLE_META[code];
         if (code >= 0x2000 && code <= 0x200A) {
             return {
@@ -498,7 +568,7 @@ function createVirtualDiffView(options) {
         const range = ranges[cursor.index];
         if (!range) return { changed: false, next: Infinity };
         if (position < range.start) return { changed: false, next: range.start };
-        return { changed: true, next: range.end };
+        return { changed: true, next: range.end, equivalent: !!range.equivalent };
     }
 
     function selectionStateAt(interval, absolutePosition, lineStart) {
@@ -587,7 +657,8 @@ function createVirtualDiffView(options) {
                 marker.setAttribute('aria-label', invisible.title + (count > 1 ? ', repeated ' + count + ' times' : ''));
                 marker.setAttribute('role', 'img');
                 setSourceAttributes(marker, lineStart + position, lineStart + groupEnd);
-                if (count > 1) addText(marker, ' × ' + count, context);
+                if (invisible.keepText) addText(marker, source.slice(position, groupEnd), context);
+                else if (count > 1) addText(marker, ' × ' + count, context);
                 specialMarkers++;
                 decoratedSpans++;
                 position = groupEnd;
@@ -663,6 +734,10 @@ function createVirtualDiffView(options) {
             }
             if (rangeState.changed) span.classList.add('diff-mismatch');
             else span.classList.add('diff-match');
+            if (rangeState.equivalent) {
+                span.classList.add('diff-equivalent');
+                span.setAttribute('title', VIRTUAL_EQUIVALENT_TITLE);
+            }
             if (selectedState.selected) span.classList.add('diff-logical-selection');
             setSourceAttributes(span, lineStart + position, lineStart + end);
             if (!addText(span, source.slice(position, end), context)) {
@@ -751,8 +826,9 @@ function createVirtualDiffView(options) {
 
         const sourceChildIndex = content.childNodes.length;
         const fallbackMismatch = row.type === 'modified'
-            || (row.type === 'missing' && side === 'left')
-            || (row.type === 'added' && side === 'right');
+            || (!isMovedChangedRow(row, side)
+                && ((row.type === 'missing' && side === 'left')
+                    || (row.type === 'added' && side === 'right')));
         yield* renderSourceSlice(content, side, line, bounds.start, page.start, page.end, ranges,
             context, rowState, sourceChildIndex, fallbackMismatch);
 
@@ -804,7 +880,19 @@ function createVirtualDiffView(options) {
             lineElement.classList.add('diff-line-mismatch');
         }
         if (row.type === 'match' && side === 'right') content.classList.add('diff-match');
-        if ((row.type === 'modified' && row.detailMode !== 'precise') || wholeLineMismatch) {
+        // A removed line that reappears unchanged elsewhere is a move, said in
+        // words as well as by colour.
+        const movedLine = side === 'left' ? row.movedTo : row.movedFrom;
+        const movedChanged = isMovedChangedRow(row, side);
+        if (wholeLineMismatch && Number.isInteger(movedLine)) {
+            lineElement.classList.add('diff-line-moved');
+            if (movedChanged) lineElement.classList.add('diff-line-moved-changed');
+            lineElement.setAttribute('title',
+                (side === 'left' ? 'Moved to line ' : 'Moved from line ') + (movedLine + 1)
+                + (movedChanged ? ', with changes' : ''));
+        }
+        if ((row.type === 'modified' && row.detailMode !== 'precise')
+            || (wholeLineMismatch && !movedChanged)) {
             content.classList.add('diff-mismatch');
         }
 

@@ -263,7 +263,9 @@
                 model = syncFallback(request.left, request.right, {
                     jobId: job.jobId,
                     inputRevision: job.inputRevision,
-                    cause: creationError || null
+                    cause: creationError || null,
+                    ignoreWhitespace: request.ignoreWhitespace === true,
+                    ignoreCase: request.ignoreCase === true
                 });
             } catch (err) {
                 failJob(
@@ -344,7 +346,9 @@
                     jobId: job.jobId,
                     inputRevision: job.inputRevision,
                     left: request.left,
-                    right: request.right
+                    right: request.right,
+                    ignoreWhitespace: request.ignoreWhitespace === true,
+                    ignoreCase: request.ignoreCase === true
                 });
             } catch (err) {
                 failJob(

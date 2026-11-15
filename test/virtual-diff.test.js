@@ -34,6 +34,7 @@ root.__VirtualDiffTest = Object.freeze({
     vm.runInContext(code.slice(0, closingIndex) + testExports + code.slice(closingIndex), context);
     return {
         stripInvisibleCharactersForTest: context.DiffCore.stripInvisibleCharacters,
+        diffCoreForTest: context.DiffCore,
         createVirtualDiffViewForTest: context.createVirtualDiffView,
         computeVirtualWindowForTest: context.__VirtualDiffTest.computeVirtualWindow,
         renderBudgetsForTest: context.__VirtualDiffTest.renderBudgets,
@@ -115,6 +116,7 @@ function setupView(callbacks) {
         requestAnimationFrame: animation.requestAnimationFrame,
         cancelAnimationFrame: animation.cancelAnimationFrame,
         stripInvisibleCharacters: virtual.stripInvisibleCharactersForTest,
+        findEquivalentRanges: virtual.diffCoreForTest.findCanonicallyEquivalentRanges,
         now: callbacks && callbacks.now ? callbacks.now : animation.now,
         onRenderingReduced(message, reason) {
             reductions.push({ message, reason });
@@ -144,7 +146,7 @@ test('runtime scripts expose only one frozen diff namespace and the virtual view
     assert.equal(Object.isFrozen(context.DiffCore), true);
     assert.deepEqual(Object.keys(context.DiffCore).sort(), [
         'classifyDiffWork', 'computeDiffModel', 'createDiffWorkBudget',
-        'hasInvisibleCharacters', 'scanDiffInput', 'stripInvisibleCharacters',
+        'findCanonicallyEquivalentRanges', 'hasInvisibleCharacters', 'scanDiffInput', 'stripInvisibleCharacters',
         'validateScannedDiffInput'
     ]);
 
@@ -390,6 +392,173 @@ test('untrusted text is only text while grouped invisible and confusable markers
     assert.ok(confusable);
     assert.match(confusable.getAttribute('aria-label'), /looks like Latin A/);
     assert.equal(confusable.textContent, '\u0410');
+});
+
+test('a carriage return is marked only where it is changed content, never as a line ending', function () {
+    const left = 'a\rb\r\nsame\r\nonly\r\nend';
+    const right = 'ab\nsame\nend';
+    const fixture = modelFixture(left, right, [
+        {
+            type: 'modified',
+            leftLineIndex: 0,
+            rightLineIndex: 0,
+            leftRangeOffset: 0,
+            leftRangeCount: 1,
+            rightRangeOffset: 2,
+            rightRangeCount: 0,
+            detailMode: 'precise'
+        },
+        { type: 'match', leftLineIndex: 1, rightLineIndex: 1 },
+        { type: 'missing', leftLineIndex: 2 },
+        { type: 'match', leftLineIndex: 3, rightLineIndex: 2 }
+    ], [1, 2]);
+    const env = setupView();
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+
+    const markers = env.left.querySelectorAll('.invisible-cr');
+    assert.equal(markers.length, 1);
+    assert.equal(markers[0].getAttribute('data-source-start'), '1');
+    assert.equal(markers[0].getAttribute('data-source-end'), '2');
+    assert.match(markers[0].getAttribute('title'), /Carriage return/);
+    assert.equal(env.right.querySelectorAll('.invisible-cr').length, 0);
+});
+
+test('a changed tab is marked with its own text so its width is kept', function () {
+    const left = 'a\tb\tc';
+    const right = 'a b\tc';
+    const fixture = modelFixture(left, right, [{
+        type: 'modified',
+        leftLineIndex: 0,
+        rightLineIndex: 0,
+        leftRangeOffset: 0,
+        leftRangeCount: 1,
+        rightRangeOffset: 2,
+        rightRangeCount: 1,
+        detailMode: 'precise'
+    }], [1, 2, 1, 2]);
+    const env = setupView();
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+
+    const tabs = env.left.querySelectorAll('.invisible-tab');
+    assert.equal(tabs.length, 1);
+    assert.equal(tabs[0].textContent, '\t');
+    assert.equal(tabs[0].getAttribute('data-source-start'), '1');
+    assert.equal(tabs[0].getAttribute('data-source-end'), '2');
+    assert.match(tabs[0].getAttribute('title'), /Tab/);
+    // The unchanged tab on either side is plain text.
+    assert.equal(env.right.querySelectorAll('.invisible-tab').length, 0);
+});
+
+test('moved lines are styled apart from other changes and say where their counterpart is', function () {
+    const left = 'keep\nmoved line one\nmoved line two\ngone';
+    const right = 'moved line one\nmoved line two\nkeep\nnew';
+    const fixture = modelFixture(left, right, [
+        { type: 'added', rightLineIndex: 0, movedFrom: 1 },
+        { type: 'added', rightLineIndex: 1, movedFrom: 2 },
+        { type: 'match', leftLineIndex: 0, rightLineIndex: 2 },
+        { type: 'missing', leftLineIndex: 1, movedTo: 0 },
+        { type: 'missing', leftLineIndex: 2, movedTo: 1 },
+        { type: 'missing', leftLineIndex: 3 },
+        { type: 'added', rightLineIndex: 3 }
+    ]);
+    const env = setupView();
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+
+    const movedLeft = env.left.querySelectorAll('.diff-line-moved');
+    const movedRight = env.right.querySelectorAll('.diff-line-moved');
+    assert.deepEqual(movedLeft.map(function (line) { return line.getAttribute('title'); }),
+        ['Moved to line 1', 'Moved to line 2']);
+    assert.deepEqual(movedRight.map(function (line) { return line.getAttribute('title'); }),
+        ['Moved from line 2', 'Moved from line 3']);
+    assert.deepEqual(movedLeft.map(function (line) { return line.getAttribute('data-line-index'); }), ['1', '2']);
+    // Nothing inside a moved line is marked as changed, spaces included.
+    assert.equal(movedRight[0].querySelectorAll('.invisible-regular-space').length, 0);
+    assert.equal(movedRight[0].querySelectorAll('.diff-mismatch').length, 1);
+    // Plain removals and additions keep the ordinary change styling.
+    assert.equal(env.left.querySelectorAll('.diff-line-mismatch').length, 3);
+    assert.equal(env.right.querySelectorAll('.diff-line-mismatch').length, 3);
+});
+
+test('a moved line that was also edited shows its changes inside the moved styling', function () {
+    const left = "log.info('user', name);\nreturn user;\nkeep";
+    const right = "keep\nlog.debug('user', name);\nreturn user;";
+    const fixture = modelFixture(left, right, [
+        { type: 'missing', leftLineIndex: 0, movedTo: 1, leftRangeOffset: 0, leftRangeCount: 1 },
+        { type: 'missing', leftLineIndex: 1, movedTo: 2 },
+        { type: 'match', leftLineIndex: 2, rightLineIndex: 0 },
+        { type: 'added', rightLineIndex: 1, movedFrom: 0, rightRangeOffset: 2, rightRangeCount: 1 },
+        { type: 'added', rightLineIndex: 2, movedFrom: 1 }
+    ], [4, 8, 4, 9]);
+    const env = setupView();
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+
+    const changedLeft = env.left.querySelectorAll('.diff-line-moved-changed');
+    const changedRight = env.right.querySelectorAll('.diff-line-moved-changed');
+    assert.equal(changedLeft.length, 1);
+    assert.equal(changedRight.length, 1);
+    assert.equal(changedLeft[0].getAttribute('title'), 'Moved to line 2, with changes');
+    assert.equal(changedRight[0].getAttribute('title'), 'Moved from line 1, with changes');
+    // Only the edited part is a change; the line itself is not one whole change.
+    assert.deepEqual(changedLeft[0].querySelectorAll('.diff-mismatch').map(function (span) {
+        return span.textContent;
+    }), ['info']);
+    assert.deepEqual(changedRight[0].querySelectorAll('.diff-mismatch').map(function (span) {
+        return span.textContent;
+    }), ['debug']);
+    assert.equal(changedLeft[0].querySelector('.diff-content').classList.contains('diff-mismatch'), false);
+    assert.equal(changedRight[0].querySelector('.diff-content').classList.contains('diff-mismatch'), false);
+    // The unchanged moved line next to it keeps the plain moved form.
+    assert.equal(env.left.querySelectorAll('.diff-line-moved').length, 2);
+    assert.equal(env.right.querySelectorAll('.diff-line-moved')[1].getAttribute('title'), 'Moved from line 2');
+});
+
+test('ranges that differ only in Unicode normalization are hinted by the rule the model counts with', function () {
+    const left = 'Café au lait, 10 kpl';
+    const right = 'Café au lait, 12 kpl';
+    const model = virtual.diffCoreForTest.computeDiffModel(left, right);
+    assert.equal(model.stats.normalizationRows, 1);
+
+    const env = setupView();
+    env.view.setResult({ sources: { left, right }, model });
+    env.animation.flushAll();
+
+    const hintedLeft = env.left.querySelectorAll('.diff-equivalent');
+    const hintedRight = env.right.querySelectorAll('.diff-equivalent');
+    assert.deepEqual(hintedLeft.map(function (span) { return span.textContent; }), ['é']);
+    assert.deepEqual(hintedRight.map(function (span) { return span.textContent; }), ['é']);
+    assert.match(hintedLeft[0].getAttribute('title'), /NFC\/NFD/);
+    assert.equal(hintedLeft[0].classList.contains('diff-mismatch'), true);
+    // The real edit on the same row is a plain change.
+    const plain = env.left.querySelectorAll('.diff-mismatch').filter(function (span) {
+        return !span.classList.contains('diff-equivalent');
+    });
+    assert.deepEqual(plain.map(function (span) { return span.textContent; }), ['10']);
+
+    // A row that fell back to a whole-line highlight is counted and hinted the same way.
+    const wholeLeft = 'r\u00e9sum\u00e9\r\nend';
+    const wholeRight = 're\u0301sume\u0301\nend';
+    const whole = virtual.diffCoreForTest.computeDiffModel(wholeLeft, wholeRight, {
+        workBudget: virtual.diffCoreForTest.createDiffWorkBudget({ remainingCharEditDistance: 0 })
+    });
+    assert.equal(whole.rows[0].detailMode, 'whole-line');
+    assert.equal(whole.stats.normalizationRows, 1);
+    const wholeEnv = setupView();
+    wholeEnv.view.setResult({ sources: { left: wholeLeft, right: wholeRight }, model: whole });
+    wholeEnv.animation.flushAll();
+    assert.equal(wholeEnv.left.querySelectorAll('.diff-equivalent').length > 0, true);
+    assert.equal(wholeEnv.right.querySelectorAll('.diff-equivalent').length > 0, true);
+
+    // No hint and no count when nothing is canonically equivalent.
+    const other = virtual.diffCoreForTest.computeDiffModel('Café one', 'Cafe two');
+    assert.equal(other.stats.normalizationRows, 0);
+    const plainEnv = setupView();
+    plainEnv.view.setResult({ sources: { left: 'Café one', right: 'Cafe two' }, model: other });
+    plainEnv.animation.flushAll();
+    assert.equal(plainEnv.left.querySelectorAll('.diff-equivalent').length, 0);
 });
 
 test('dense marker rows reduce once and stay below the global 8,000-node budget', function () {

@@ -14,7 +14,7 @@
     <meta name="keywords" content="text comparison, diff, text diff, compare texts, diffvoid">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="author" content="Timo Heimonen">
-    <meta name="version" content="2.1.0">
+    <meta name="version" content="2.2.0">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
     <meta property="og:title" content="Diffvoid - Secure Online Text Comparison Tool">
@@ -72,6 +72,8 @@
             <div class="mismatch-counter" id="mismatch-counter" style="display: none;"></div>
             <div id="progress-indicator" class="progress-indicator" role="status" aria-live="polite"
                 aria-atomic="true" style="display: none;"></div>
+            <div id="compare-notice" class="compare-notice" role="status" aria-live="polite" aria-atomic="true"
+                style="display: none;"></div>
             <div id="render-notice" class="render-notice" role="status" aria-live="polite" aria-atomic="true"
                 style="display: none;"></div>
             <button id="copy-left" class="copy-clean-btn" type="button" aria-label="Copy all left text"
@@ -108,6 +110,10 @@
             </button>
         </div>
         <nav class="header-actions" aria-label="Actions">
+            <button id="whitespace-toggle" class="text-btn" type="button" aria-pressed="false"
+                title="Ignore indentation, trailing whitespace and the amount of spaces and tabs">ignore whitespace</button>
+            <button id="case-toggle" class="text-btn" type="button" aria-pressed="false"
+                title="Treat upper and lower case letters as the same">ignore case</button>
             <button id="clear-button" class="icon-button" type="button" aria-label="Clear all text" title="Clear all text">
                 <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.6 9a1.5 1.5 0 0 0 1.5 1.5h3.8a1.5 1.5 0 0 0 1.5-1.5L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -174,7 +180,7 @@
                         </li>
                         <li>
                             <span class="step-num">2</span>
-                            <div><strong>Compare</strong><span>The diff appears automatically, line by line.</span></div>
+                            <div><strong>Compare</strong><span>The diff appears automatically, line by line. Use <em>ignore whitespace</em> to set aside indentation and spacing, and <em>ignore case</em> for upper and lower case.</span></div>
                         </li>
                         <li>
                             <span class="step-num">3</span>
@@ -195,6 +201,16 @@
                             <span class="legend-sample legend-gap" aria-hidden="true"></span>
                             <strong>Added or missing</strong>
                             <span class="legend-desc">an empty gap on the other side</span>
+                        </div>
+                        <div class="legend-card">
+                            <span class="legend-sample legend-moved">moved(<span class="diff-mismatch">x</span>);</span>
+                            <strong>Moved</strong>
+                            <span class="legend-desc">lines in another place, edits in red</span>
+                        </div>
+                        <div class="legend-card">
+                            <span class="legend-sample">caf<span class="diff-mismatch diff-equivalent">é</span></span>
+                            <strong>Same characters</strong>
+                            <span class="legend-desc">different Unicode form (NFC/NFD)</span>
                         </div>
                         <div class="legend-card">
                             <span class="legend-sample">a<span class="invisible-nbsp" aria-hidden="true"></span>b</span>
@@ -238,7 +254,7 @@
                         GitHub
                     </a>
                 </nav>
-                <span class="info-version">open source · v2.1.0</span>
+                <span class="info-version">open source · v2.2.0</span>
             </footer>
         </div>
     </div>

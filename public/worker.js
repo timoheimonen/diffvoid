@@ -31,6 +31,8 @@ self.onmessage = function (event) {
     try {
         model = self.DiffCore.computeDiffModel(request.left, request.right, {
             workBudget: self.DiffCore.createDiffWorkBudget(),
+            ignoreWhitespace: request.ignoreWhitespace === true,
+            ignoreCase: request.ignoreCase === true,
             deadlineAt: deadlineAt,
             now: now,
             onProgress: function (progress) {
