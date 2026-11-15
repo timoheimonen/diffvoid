@@ -18,7 +18,7 @@
 
 <body>
   <div class="topbar">
-    <a class="wordmark" href="https://diffvoid.com/">diffvoid</a>
+    <a class="wordmark" href="https://diffvoid.com/">diffvoid.com</a>
     <a class="topbar-link" href="https://diffvoid.com/">Open the app →</a>
   </div>
 
@@ -27,9 +27,9 @@
       <h1 class="eyebrow">About diffvoid.com</h1>
       <p class="display">Your secure place to compare texts.</p>
       <p class="lead"><strong>diffvoid.com</strong> is a secure, private, browser-based text comparison tool. All
-        processing happens locally in your browser—your text never leaves your device.</p>
+        processing happens locally in your browser: your text never leaves your device.</p>
       <a class="cta" href="https://diffvoid.com/">Compare texts <span aria-hidden="true">→</span></a>
-      <div class="meta">Version 2.2.0</div>
+      <div class="meta">Version 2.3.0</div>
     </header>
 
     <section aria-labelledby="how">
@@ -37,7 +37,8 @@
       <ol class="steps">
         <li>
           <span class="step-num">1</span>
-          <div><strong>Paste</strong><span>Paste text into the left and right panels.</span></div>
+          <div><strong>Paste or open</strong><span>Paste text into the left and right panels, or drop or open a file on
+              each side. Files are read in your browser and never uploaded.</span></div>
         </li>
         <li>
           <span class="step-num">2</span>
@@ -50,7 +51,19 @@
         </li>
         <li>
           <span class="step-num">4</span>
-          <div><strong>Copy</strong><span>Copy either side exactly, or cleaned of invisible characters.</span></div>
+          <div><strong>Review</strong><span>Step from change to change with the arrow buttons, Alt+Up/Down or F7, or
+              click the overview map beside the panes. <em>changes only</em> folds unchanged lines away, and <em>unified</em>
+              shows both texts in one column.</span></div>
+        </li>
+        <li>
+          <span class="step-num">5</span>
+          <div><strong>Merge</strong><span>Select a change and keep its left or right version. Every merge can be
+              undone.</span></div>
+        </li>
+        <li>
+          <span class="step-num">6</span>
+          <div><strong>Copy or export</strong><span>Copy either side exactly, or cleaned of invisible characters, or
+              take the differences as a unified diff or a .patch file.</span></div>
         </li>
       </ol>
     </section>
@@ -166,7 +179,7 @@
     <section aria-labelledby="confusable">
       <h2 id="confusable">Detected confusable characters</h2>
       <p>Confusable characters are visible letters from another script that can look like ordinary Latin letters.
-        diffvoid marks common Greek and Cyrillic lookalikes, such as Cyrillic <code>А</code> (U+0410) that looks like
+        diffvoid.com marks common Greek and Cyrillic lookalikes, such as Cyrillic <code>А</code> (U+0410) that looks like
         Latin <code>A</code>, with a dotted underline and a tooltip.</p>
       <p class="muted">Invisible characters are hidden or spacing-related. Confusable characters are visible, but easy
         to misread in code, domains, copied text, and identifiers.</p>
@@ -190,7 +203,7 @@
         left and right texts remain the only source of truth in the page.</p>
       <p>The result view has fixed-height, non-wrapping rows and creates DOM only for the visible window: at most 200
         rows per pane and 8,000 nodes across both panes. Very dense long lines use a paged preview. If exact character
-        decoration must be simplified, diffvoid displays <strong>Detailed rendering reduced for performance</strong>;
+        decoration must be simplified, diffvoid.com displays <strong>Detailed rendering reduced for performance</strong>;
         this never changes the text returned by Copy L/R.</p>
       <p>Safe practical limits are 25,000 lines, 2,000,000 characters per side, 100,000 characters per line, and shared
         bounds for line diffing, alignment, character diffing, compact ranges, and rendering. Input outside those bounds
@@ -201,8 +214,9 @@
 
     <section aria-labelledby="privacy">
       <h2 id="privacy">Private by design</h2>
-      <p>diffvoid has no ads, no analytics and no cookies. Your text stays in your browser, and only your theme
-        preference is saved locally.</p>
+      <p>diffvoid.com has no ads, no analytics and no cookies. Your text stays in your browser, and only your theme
+        preference is saved locally. A file you open or drop is read by the page itself, and a saved .patch file is
+        created in the page: neither is sent anywhere.</p>
       <p class="muted">Read the full <a href="/privacy">Privacy Policy</a> and <a href="/tos">Terms of
           Service</a>.</p>
     </section>

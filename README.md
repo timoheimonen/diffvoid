@@ -1,6 +1,6 @@
 # diffvoid.com
 
-A secure, browser-based text comparison tool. Compare two texts side by side and inspect exact differences without uploading either text. All comparison work stays inside your browser.
+A secure, browser-based text comparison tool. Compare two texts or files side by side, step through the changes, merge them, and export a patch, without uploading anything. All comparison work stays inside your browser.
 
 **Live:** [diffvoid.com](https://diffvoid.com)
 
@@ -19,6 +19,14 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
 - **Unicode normalization hint**: Text that is the same characters in a different normalization form (a precomposed `é` against `e` plus a combining accent) is underlined with an explanation, such lines are always paired, and the affected rows are counted. Only canonical equivalence (NFC) counts; compatibility forms such as the `ﬁ` ligature remain ordinary differences.
 - **Invisible character detection**: Zero-width spaces, non-breaking spaces, soft hyphens, directional marks, and other hidden Unicode characters receive visible markers.
 - **Confusable character detection**: Common Greek and Cyrillic homographs that resemble Latin letters receive a marker and an explanatory tooltip.
+- **Local files**: Drop a file on a pane or use **open left** / **open right**. Two files dropped together fill both sides. The file is read by the page with the File API and is never uploaded. UTF-8 is expected and its byte order mark is kept as a visible `[BOM]`; UTF-16 is recognised by its byte order mark, other bytes are read as Windows-1252 and labelled so, and binary files are refused.
+- **Change navigation**: The arrow buttons, `Alt+Down` / `Alt+Up` and `F7` / `Shift+F7` step through the changes, where a change is a run of consecutive difference rows. The current change is marked in the gutter and counted (`3 / 12`); a click inside a change selects it too.
+- **Overview map**: A strip beside the panes marks every change over the whole result, the left text in its left half and the right text in its right half, moved blocks in violet, with a frame for the part on screen. Click or drag it to jump.
+- **Changes only**: The **changes only** toggle folds every unchanged run into one row and keeps three lines of context around each change. A fold opens when clicked, or when the selection moves into it.
+- **Unified view**: The **unified** toggle shows both texts in one column instead of two panes: the removed lines of a change above its added lines, a `-` or `+` sign before each, and the old and new line numbers in two gutters. Navigation, **changes only**, merging and copying work the same way, and the overview map uses its whole width for the single column. A selection stays within one text, the one its first line belongs to.
+- **Merge with undo**: **use left** and **use right** keep one version of the selected change: its lines replace the lines of the other text, with their own line endings. The result stays where it was on screen, **undo** (or `Ctrl+Z`) takes back up to 20 merges within 8,000,000 characters of kept text, and Copy L/R returns the merged text.
+- **Unified diff export**: **copy diff** and **save .patch** produce a standard unified diff with three lines of context, file names when files were opened, and `\ No newline at end of file` markers. It describes the exact texts: rows that an ignore option or the line-ending rule shows as matching are still part of it, so applying it to the left text always gives the right text.
+- **Swap**: One button exchanges the two sides.
 - **Exact and clean copying**: Copy L/R returns the complete original source, including unmounted rows and trailing newlines. Clean L/R additionally normalizes detected invisible spacing characters and removes soft hyphens and BOM characters.
 - **Virtualized rendering**: Only the visible diff window is mounted. Rendering is capped at 200 rows per pane and 8,000 DOM nodes across both panes, and work is split across animation frames.
 - **Reduced long-line previews**: Dense lines over 20,000 code units are shown as paged previews around changes. Copying still uses the complete original source.
@@ -30,7 +38,7 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
 
 ## How to Use
 
-1. Paste text into the left and right panels.
+1. Paste text into the left and right panels, or drop or open a file on each side.
 2. The comparison starts automatically.
 3. Read the aligned result:
    - **Matching lines** have no background highlight.
@@ -42,7 +50,10 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
    - **Dotted underlines** inside a change mark text that differs only in Unicode normalization (NFC/NFD).
    - **Ignored differences** are counted next to the result: rows whose line endings (CRLF/LF) differ, with **ignore whitespace** on, rows that differ only in spaces and tabs, and with **ignore case** on, rows that differ only in letter case. When nothing else differs the counter reads **0 difference rows** rather than **100% Match**.
 4. Use **Copy L/R** for the exact source text. When invisible characters are present, **Clean L/R** also appears; it turns detected hidden spacing characters into ordinary spaces, collapses adjacent normalized spaces, and removes soft hyphens and BOM characters.
-5. Drag the divider to resize the panes, or use Clear to reset the comparison.
+5. Step through the changes with the arrow buttons, `Alt+Down` / `Alt+Up` or `F7` / `Shift+F7`, or click the overview map. Turn on **changes only** to hide unchanged lines, or **unified** to read both texts in one column.
+6. Select a change and choose **use left** or **use right** to keep that version on both sides. **undo** takes a merge back.
+7. Use **copy diff** or **save .patch** for a unified diff of the two texts.
+8. Drag the divider to resize the panes, or use Clear to reset the comparison.
 
 ## Invisible Characters Detected
 
@@ -70,7 +81,7 @@ A secure, browser-based text comparison tool. Compare two texts side by side and
 
 ## Confusable Characters Detected
 
-Invisible characters are hidden or spacing-related code points. Confusable characters are visible letters from another script that can resemble Latin letters. diffvoid marks common Greek and Cyrillic lookalikes such as:
+Invisible characters are hidden or spacing-related code points. Confusable characters are visible letters from another script that can resemble Latin letters. diffvoid.com marks common Greek and Cyrillic lookalikes such as:
 
 | Example | Name | Looks like |
 |---------|------|------------|
@@ -92,6 +103,7 @@ Invisible characters are hidden or spacing-related code points. Confusable chara
 6. Only the selected modified pairs receive a character diff. Graphemes are grouped into words (letters, digits, underscore) and single punctuation or whitespace characters, the groups are compared with Myers, and a word replaced by a similar word is narrowed to the part between their common start and end. The changes become UTF-16 offsets in a shared `Uint32Array` pool.
 7. The worker returns one atomic, source-free `DiffModelV2` result with transferable typed-array buffers. Original text remains the single source of truth on the main thread.
 8. The virtual view creates DOM nodes only for the shared visible row window. User content is assigned through DOM APIs and `textContent`, not generated HTML.
+9. Navigation, the overview map, folds, the unified view, merging and the unified diff are derived on the main thread from the model and the original texts. The worker protocol and `DiffModelV2` are unchanged by them, and a merge is an ordinary new comparison of the changed text.
 
 The comparison shares explicit work budgets across line diffing, row alignment, character diffing, compact ranges, and rendering. If a detail budget is exhausted, the UI uses a whole-line highlight or a paged preview and displays **Detailed rendering reduced for performance**. It never invents a modified-line pairing when reliable alignment cannot be completed.
 
@@ -108,13 +120,15 @@ npm run perf   # isolated large-input model and memory checks
 
 ### Browser Compatibility
 
-The interface requires a modern browser with ES6 JavaScript, `Intl.Segmenter` including `Segments.prototype.containing()`, typed arrays, Pointer Events, the Clipboard API, `requestAnimationFrame`, CSS variables, and Local Storage. Worker-required comparisons additionally need Web Worker support.
+The interface requires a modern browser with ES6 JavaScript, `Intl.Segmenter` including `Segments.prototype.containing()`, typed arrays, Pointer Events, the Clipboard API, `requestAnimationFrame`, CSS variables, and Local Storage. Opening files uses the File API and `TextDecoder`, the overview map a 2D canvas, and saving a patch a `Blob` download. Worker-required comparisons additionally need Web Worker support.
 
 ## Privacy
 
 - No collection or storage of compared text
 - No analytics, advertising, cookies, or third-party tracking
 - Compared text is passed only between the page and an in-browser same-origin Worker
+- Opened and dropped files are read inside the page; a saved patch is created inside the page
+- Merged texts and the undo history exist only in the memory of the open page
 - Theme preference is the only value stored in Local Storage
 
 See the [Privacy Policy](https://diffvoid.com/privacy), [Terms of Service](https://diffvoid.com/tos), and [About](https://diffvoid.com/about) pages for details.
@@ -126,10 +140,10 @@ See the [Privacy Policy](https://diffvoid.com/privacy), [Terms of Service](https
 ```text
 public/
 ├── index.html           # Main UI, accessibility markup, and copy controls
-├── script.js            # Input state and controller/view orchestration
-├── shared-diff.js       # Validation, Myers, budgets, DP alignment, and DiffModelV2
+├── script.js            # Input state, files, toolbar, overview map, and controller/view orchestration
+├── shared-diff.js       # Validation, Myers, budgets, DP alignment, DiffModelV2, unified diff, and merge
 ├── diff-controller.js   # Worker jobs, timeouts, cancellation, and stale-result protection
-├── virtual-diff.js      # Virtual DOM rendering, previews, and logical selection
+├── virtual-diff.js      # Virtual DOM rendering, previews, logical selection, change index, and folds
 ├── worker.js            # Worker protocol and transferable atomic results
 ├── theme.js             # Theme toggle and local persistence
 ├── style.css            # Main application and virtual diff styles
@@ -146,6 +160,7 @@ test/
 ├── diff-routing.test.js
 ├── worker-protocol.test.js
 ├── virtual-diff.test.js
+├── unified-diff.test.js
 └── architecture-invariants.test.js
 ```
 

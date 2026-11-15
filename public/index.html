@@ -10,14 +10,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Compare two texts side by side with a secure online diff tool. Detect invisible Unicode characters, highlight exact changes, and keep all processing in your browser.">
-    <meta name="keywords" content="text comparison, diff, text diff, compare texts, diffvoid">
+        content="Compare two texts or files side by side with a secure online diff tool. Step through changes, merge them, export a patch, detect invisible Unicode characters, and keep all processing in your browser.">
+    <meta name="keywords" content="text comparison, diff, text diff, compare texts, compare files, merge, patch, diffvoid.com">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="author" content="Timo Heimonen">
-    <meta name="version" content="2.2.0">
+    <meta name="version" content="2.3.0">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
-    <meta property="og:title" content="Diffvoid - Secure Online Text Comparison Tool">
+    <meta property="og:title" content="diffvoid.com - Secure Online Text Comparison Tool">
     <meta property="og:description"
         content="Compare texts instantly, detect hidden Unicode characters, and keep your data private with fully browser-side diff processing.">
     <meta property="og:type" content="website">
@@ -25,14 +25,14 @@
     <meta property="og:site_name" content="diffvoid.com">
     <meta property="og:locale" content="en_US">
     <meta property="og:image" content="https://diffvoid.com/og-image.png">
-    <meta property="og:image:alt" content="Diffvoid secure online text comparison tool preview">
+    <meta property="og:image:alt" content="diffvoid.com secure online text comparison tool preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Diffvoid - Secure Online Text Comparison Tool">
+    <meta name="twitter:title" content="diffvoid.com - Secure Online Text Comparison Tool">
     <meta name="twitter:description"
         content="Compare two texts side by side and detect invisible characters. All processing stays in your browser.">
     <meta name="twitter:image" content="https://diffvoid.com/og-image.png">
     <link rel="canonical" href="https://diffvoid.com/">
-    <title>Diffvoid - Secure Online Text Comparison Tool</title>
+    <title>diffvoid.com - Secure Online Text Comparison Tool</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <script src="theme.js"></script>
     <link rel="stylesheet" href="style.css">
@@ -54,6 +54,11 @@
             "featureList": [
                 "Line-aware text comparison",
                 "Character-level diff highlighting",
+                "Side-by-side and unified views",
+                "Local file comparison without uploads",
+                "Change navigation and overview map",
+                "Merging changes with undo",
+                "Unified diff and patch export",
                 "Invisible Unicode character detection",
                 "Copy text without invisible characters",
                 "Client-side processing with no uploads"
@@ -65,7 +70,7 @@
 <body>
     <header id="menu-bar">
         <h1 id="logo">
-            <span class="logo-mark">diffvoid</span>
+            <span class="logo-mark">diffvoid.com</span>
             <span class="logo-tagline">your secure place to compare texts</span>
         </h1>
         <div class="copy-clean-container">
@@ -130,18 +135,80 @@
                 </svg>
             </button>
             <button id="info-btn" class="text-btn" type="button" aria-haspopup="dialog" aria-controls="info-overlay" aria-expanded="false"
-                title="How diffvoid works">help</button>
+                title="How diffvoid.com works">help</button>
         </nav>
     </header>
-    <main aria-label="Text comparison workspace">
-        <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" aria-label="Left text"
-            aria-multiline="true" data-placeholder="To this...">
+    <div id="toolbar" class="toolbar" role="toolbar" aria-label="Comparison tools">
+        <div class="toolbar-group">
+            <button id="open-left" class="text-btn file-btn" type="button"
+                title="Open a file as the left text. It is read in your browser and never uploaded.">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                </svg>
+                <span id="open-left-label" class="file-btn-label">open left</span>
+            </button>
+            <button id="open-right" class="text-btn file-btn" type="button"
+                title="Open a file as the right text. It is read in your browser and never uploaded.">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                </svg>
+                <span id="open-right-label" class="file-btn-label">open right</span>
+            </button>
+            <button id="swap-button" class="icon-button" type="button" aria-label="Swap left and right"
+                title="Swap left and right">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M2.5 5.5h11M10.5 2.5l3 3-3 3M13.5 10.5h-11M5.5 7.5l-3 3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
         </div>
-        <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize comparison panes"
-            aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50"></div>
-        <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
-            aria-label="Right text" aria-multiline="true" data-placeholder="Compare this..."></div>
-    </main>
+        <div id="change-nav" class="toolbar-group toolbar-nav" hidden>
+            <button id="prev-change" class="icon-button" type="button" aria-label="Previous change"
+                title="Previous change (Alt+Up or Shift+F7)">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            <button id="next-change" class="icon-button" type="button" aria-label="Next change"
+                title="Next change (Alt+Down or F7)">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            <span id="change-position" class="change-position" role="status" aria-live="polite" aria-atomic="true"></span>
+            <button id="use-left" class="text-btn" type="button" disabled
+                title="Keep the left version of the selected change: its lines replace the right side">use left</button>
+            <button id="use-right" class="text-btn" type="button" disabled
+                title="Keep the right version of the selected change: its lines replace the left side">use right</button>
+            <button id="undo-merge" class="text-btn" type="button" hidden
+                title="Undo the last merged change (Ctrl+Z)">undo</button>
+            <span id="change-stats" class="change-stats"></span>
+        </div>
+        <div id="result-tools" class="toolbar-group toolbar-end" hidden>
+            <button id="unified-toggle" class="text-btn" type="button" aria-pressed="false"
+                title="Show both texts in one column: removed lines above added lines">unified</button>
+            <button id="collapse-toggle" class="text-btn" type="button" aria-pressed="false"
+                title="Hide unchanged lines and keep three lines of context around each change">changes only</button>
+            <button id="copy-patch" class="text-btn" type="button"
+                title="Copy the differences as a unified diff (patch)">copy diff</button>
+            <button id="download-patch" class="text-btn" type="button"
+                title="Save the differences as a .patch file. The file is created in your browser.">save .patch</button>
+        </div>
+        <input id="file-input" type="file" hidden tabindex="-1" aria-hidden="true">
+    </div>
+    <div class="workspace">
+        <main aria-label="Text comparison workspace">
+            <div id="input-left" class="text-field" contenteditable="true" spellcheck="false" aria-label="Left text"
+                aria-multiline="true" data-placeholder="Paste text or drop a file: to this..."></div>
+            <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize comparison panes"
+                aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50"></div>
+            <div id="input-right" class="text-field" contenteditable="true" spellcheck="false"
+                aria-label="Right text" aria-multiline="true" data-placeholder="Paste text or drop a file: compare this..."></div>
+        </main>
+        <div id="change-map" class="change-map" hidden aria-hidden="true" title="Overview of changes. Click to jump.">
+            <canvas id="change-map-canvas"></canvas>
+            <div id="change-map-viewport" class="change-map-viewport"></div>
+        </div>
+    </div>
     <footer class="seo-content" aria-labelledby="seo-title">
         <div class="seo-text">
             <h2 id="seo-title">Compare text online with privacy-first diffing</h2>
@@ -160,7 +227,7 @@
         <div id="info-window" class="info-window" role="dialog" aria-modal="true" aria-labelledby="info-title">
             <header class="info-header">
                 <div>
-                    <h2 id="info-title" class="info-title">diffvoid</h2>
+                    <h2 id="info-title" class="info-title">diffvoid.com</h2>
                     <p class="info-tagline">Your secure place to compare <span class="tagline-diff">texts.</span></p>
                 </div>
                 <button id="info-close-btn" class="info-close-btn" type="button" title="Close" aria-label="Close">
@@ -176,7 +243,7 @@
                     <ol class="info-steps">
                         <li>
                             <span class="step-num">1</span>
-                            <div><strong>Paste</strong><span>Paste one text into each panel.</span></div>
+                            <div><strong>Paste or open</strong><span>Paste one text into each panel, or drop or open a file. Files are read in your browser and never uploaded.</span></div>
                         </li>
                         <li>
                             <span class="step-num">2</span>
@@ -184,7 +251,11 @@
                         </li>
                         <li>
                             <span class="step-num">3</span>
-                            <div><strong>Copy</strong><span>Take either side as is, or cleaned of hidden characters.</span></div>
+                            <div><strong>Review</strong><span>Step through the changes with the arrows, <em>Alt+Up/Down</em> or <em>F7</em>, or click the map on the right. <em>changes only</em> hides unchanged lines, and <em>unified</em> shows both texts in one column.</span></div>
+                        </li>
+                        <li>
+                            <span class="step-num">4</span>
+                            <div><strong>Merge and export</strong><span>Select a change and keep its left or right version. Copy either side, or save the differences as a patch.</span></div>
                         </li>
                     </ol>
                 </section>
@@ -237,6 +308,10 @@
                             <span>Drag the divider to resize the panels. Double-click it to reset to 50/50.</span>
                         </li>
                         <li>
+                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 5.5h11M10.5 2.5l3 3-3 3M13.5 10.5h-11M5.5 7.5l-3 3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            <span><strong>use left</strong> and <strong>use right</strong> change the text on the other side, and <strong>undo</strong> takes a merge back. <strong>copy diff</strong> and <strong>save .patch</strong> describe the exact texts, including differences that an ignore option hides.</span>
+                        </li>
+                        <li>
                             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.5" /></svg>
                             <span>Private by design. Your text never leaves your device. No uploads, no tracking.</span>
                         </li>
@@ -254,7 +329,7 @@
                         GitHub
                     </a>
                 </nav>
-                <span class="info-version">open source · v2.2.0</span>
+                <span class="info-version">open source · v2.3.0</span>
             </footer>
         </div>
     </div>

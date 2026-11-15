@@ -460,7 +460,8 @@ body {
 }
 
 .info-steps li:nth-child(2) .step-num { opacity: 0.7; }
-.info-steps li:nth-child(3) .step-num { opacity: 0.4; }
+.info-steps li:nth-child(3) .step-num { opacity: 0.55; }
+.info-steps li:nth-child(4) .step-num { opacity: 0.4; }
 
 .info-steps div {
     display: flex;
@@ -621,13 +622,167 @@ body {
     }
 }
 
+/* ── Toolbar ── */
+
+.toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px 16px;
+    min-height: 44px;
+    padding: 6px 24px;
+    border-bottom: 1px solid var(--ui-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.toolbar::-webkit-scrollbar {
+    display: none;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.toolbar-group[hidden] {
+    display: none;
+}
+
+.toolbar-end {
+    margin-left: auto;
+}
+
+.toolbar .text-btn,
+.toolbar .icon-button {
+    height: 30px;
+}
+
+.toolbar .icon-button {
+    width: 30px;
+}
+
+.text-btn:disabled,
+.icon-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
+.file-btn {
+    gap: 6px;
+}
+
+.file-btn svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+.file-btn-label {
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-btn.has-file {
+    color: var(--text);
+}
+
+.change-position {
+    min-width: 5.5em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.change-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-muted);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.text-btn[hidden] {
+    display: none;
+}
+
+@media (max-width: 1100px) {
+    .change-stats {
+        display: none;
+    }
+}
+
+.text-btn.copy-success,
+.text-btn.copy-success:hover {
+    color: var(--diff-match);
+    background: var(--diff-match-soft);
+}
+
 /* ── Comparison panes ── */
+
+.workspace {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
 
 main {
     flex: 1;
     display: flex;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
+}
+
+/* Overview of the whole result: one mark per change, left and right halves
+   for the two texts, and a frame for the part on screen. */
+.change-map {
+    position: relative;
+    flex: 0 0 14px;
+    width: 14px;
+    border-left: 1px solid var(--ui-border);
+    cursor: pointer;
+    touch-action: none;
+}
+
+.change-map[hidden] {
+    display: none;
+}
+
+.change-map canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.change-map-viewport {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    min-height: 6px;
+    background: rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .change-map-viewport {
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.text-field.drag-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .text-field {
@@ -753,8 +908,119 @@ body.resizing .diff-gutter {
     opacity: 0.6;
 }
 
+/* Unified view: both texts in the left pane, with old and new line numbers
+   and a sign before each changed line. */
+.text-field.diff-unified {
+    width: 100% !important;
+}
+
+.text-field.diff-unified-hidden,
+.text-field.diff-unified + .divider {
+    display: none;
+}
+
+.diff-line-removed {
+    background-color: var(--diff-missing-bg);
+}
+
+.diff-line-added {
+    background-color: var(--diff-match-soft);
+}
+
+.diff-line-removed .diff-gutter {
+    color: var(--diff-mismatch);
+}
+
+.diff-line-added .diff-gutter {
+    color: var(--diff-match);
+}
+
+.diff-line-added .diff-content.diff-mismatch,
+.diff-line-added .diff-content .diff-mismatch {
+    color: var(--diff-match);
+}
+
+/* The gutters stay opaque: they are sticky and cover scrolled text. */
+.diff-mode.diff-unified .diff-gutter {
+    margin-right: 0;
+    border-right: none;
+    opacity: 1;
+}
+
+.diff-mode.diff-unified .diff-gutter + .diff-gutter {
+    left: 3.4rem;
+    margin-right: 0.3rem;
+    border-right: 1px solid var(--ui-border);
+}
+
+.diff-mode.diff-unified .diff-content {
+    min-width: calc(100% - 7.1rem);
+}
+
+.diff-mode.diff-unified .diff-fold .diff-gutter {
+    flex-basis: 6.8rem;
+    width: 6.8rem;
+}
+
+.diff-unified .diff-content::before {
+    content: " ";
+    display: inline-block;
+    width: 1.6ch;
+    color: var(--diff-gutter-color);
+    white-space: pre;
+}
+
+.diff-unified .diff-line-removed .diff-content::before {
+    content: "-";
+    color: var(--diff-mismatch);
+}
+
+.diff-unified .diff-line-added .diff-content::before {
+    content: "+";
+    color: var(--diff-match);
+}
+
 .diff-line-moved {
     background-color: var(--diff-moved-bg);
+}
+
+/* The change selected with previous/next. */
+.diff-mode .diff-line-current .diff-gutter {
+    box-shadow: inset 3px 0 0 var(--accent);
+    color: var(--accent);
+    opacity: 1;
+}
+
+.diff-mode .diff-fold {
+    background: var(--ctl-bg);
+}
+
+.diff-mode .diff-fold .diff-gutter {
+    background-color: transparent;
+    border-right-color: transparent;
+}
+
+.diff-fold-button {
+    height: 17px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 17px;
+    color: var(--ui-muted);
+    cursor: pointer;
+}
+
+.diff-fold-button:hover {
+    background: var(--ctl-bg-hover);
+    color: var(--text);
+}
+
+.diff-fold-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 .diff-line-moved .diff-content.diff-mismatch,
@@ -1129,6 +1395,10 @@ body.resizing .diff-gutter {
         padding: 0 16px;
     }
 
+    .toolbar {
+        padding: 6px 16px;
+    }
+
     .copy-clean-btn {
         padding: 0 10px;
     }
@@ -1221,6 +1491,11 @@ body.resizing .diff-gutter {
 
     .icon-button {
         width: 36px;
+    }
+
+    .toolbar {
+        padding: 6px 12px;
+        gap: 6px 12px;
     }
 
     .text-field {

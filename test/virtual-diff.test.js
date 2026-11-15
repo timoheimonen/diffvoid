@@ -121,6 +121,9 @@ function setupView(callbacks) {
         onRenderingReduced(message, reason) {
             reductions.push({ message, reason });
             if (callbacks && callbacks.onRenderingReduced) callbacks.onRenderingReduced(message, reason);
+        },
+        onViewChange() {
+            if (callbacks && callbacks.onViewChange) callbacks.onViewChange();
         }
     });
     return { document, left, right, animation, reductions, view };
@@ -145,9 +148,9 @@ test('runtime scripts expose only one frozen diff namespace and the virtual view
     );
     assert.equal(Object.isFrozen(context.DiffCore), true);
     assert.deepEqual(Object.keys(context.DiffCore).sort(), [
-        'classifyDiffWork', 'computeDiffModel', 'createDiffWorkBudget',
-        'findCanonicallyEquivalentRanges', 'hasInvisibleCharacters', 'scanDiffInput', 'stripInvisibleCharacters',
-        'validateScannedDiffInput'
+        'classifyDiffWork', 'computeDiffModel', 'createDiffWorkBudget', 'createUnifiedDiff',
+        'decodeTextBytes', 'findCanonicallyEquivalentRanges', 'hasInvisibleCharacters', 'maxFileBytes',
+        'mergeDiffRows', 'scanDiffInput', 'stripInvisibleCharacters', 'validateScannedDiffInput'
     ]);
 
     const sharedKeys = new Set(Object.keys(context));
@@ -242,9 +245,10 @@ test('the view exposes one canonical contract and requires its modern dependenci
     const fixture = equalFixture(1);
     const env = setupView();
     assert.deepEqual(Object.keys(env.view).sort(), [
-        'copyToClipboardData', 'destroy', 'getCleanCopyText', 'getCopyText',
-        'getMountedNodeCount', 'getMountedRange', 'getSelectedText', 'getSelection',
-        'resetToInput', 'selectAll', 'setResult', 'setSelection'
+        'copyToClipboardData', 'destroy', 'getChangeMarks', 'getChangeRows', 'getChangeSummary',
+        'getCleanCopyText', 'getCopyText', 'getMountedNodeCount', 'getMountedRange', 'getScrollAnchor',
+        'getSelectedText', 'getSelection', 'goToChange', 'isCollapsed', 'isUnified', 'resetToInput', 'selectAll',
+        'setCollapsed', 'setResult', 'setSelection', 'setUnified'
     ]);
     assert.throws(function () { env.view.setResult({ sources: fixture.sources }); }, /requires \{ sources, model, selection \}/);
     env.view.setResult(fixture);
@@ -937,4 +941,391 @@ test('top-level copy helpers normalize reversed selections and preserve trailing
         virtual.cleanCopyTextForTest(sources, 'right', virtual.stripInvisibleCharactersForTest),
         'x y'
     );
+});
+
+// 200 lines with three changes: row 10 modified, rows 100-101 removed and row
+// 152 added, 201 rows in all.
+function changedFixture() {
+    const leftLines = Array.from({ length: 200 }, function (_, index) {
+        return 'line number ' + index + ' stays the same';
+    });
+    const rightLines = leftLines.slice();
+    rightLines[10] = 'line number 10 was edited here';
+    rightLines.splice(100, 2);
+    rightLines.splice(150, 0, 'a brand new line');
+    const left = leftLines.join('\n');
+    const right = rightLines.join('\n');
+    const core = virtual.diffCoreForTest;
+    return {
+        sources: { left, right },
+        model: core.computeDiffModel(left, right, { workBudget: core.createDiffWorkBudget() })
+    };
+}
+
+function plain(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+test('changes are indexed once per result and stepped through in both directions', function () {
+    const fixture = changedFixture();
+    let viewChanges = 0;
+    const env = setupView({ onViewChange() { viewChanges++; } });
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    assert.equal(fixture.model.rows.length, 201);
+    assert.deepEqual(plain(env.view.getChangeSummary()), { total: 3, current: -1 });
+    assert.equal(env.left.querySelectorAll('.diff-line-current').length, 0);
+
+    assert.deepEqual(plain(env.view.goToChange('next')), { total: 3, current: 0 });
+    assert.equal(env.left.scrollTop, 0);
+    assert.equal(viewChanges, 1);
+    assert.deepEqual(plain(env.view.goToChange('next')), { total: 3, current: 1 });
+    // The change sits a quarter of the 40-row viewport from the top, on both sides.
+    assert.equal(env.left.scrollTop, 90 * 21);
+    assert.equal(env.right.scrollTop, 90 * 21);
+    env.animation.flushAll();
+    for (const pane of [env.left, env.right]) {
+        assert.deepEqual(
+            pane.querySelectorAll('.diff-line-current').map(function (row) { return row.getAttribute('data-row-index'); }),
+            ['100', '101']
+        );
+    }
+
+    assert.equal(env.view.goToChange('next').current, 2);
+    assert.equal(env.view.goToChange('next').current, 0, 'next wraps to the first change');
+    assert.equal(env.view.goToChange('previous').current, 2, 'previous wraps to the last change');
+
+    // After scrolling away from the current change, stepping starts from what is on screen.
+    env.view.goToChange(0);
+    env.left.scrollTop = 120 * 21;
+    env.left.dispatchEvent(new FakeEvent('scroll'));
+    assert.equal(env.view.goToChange('previous').current, 1);
+    env.view.goToChange(0);
+    env.left.scrollTop = 120 * 21;
+    env.left.dispatchEvent(new FakeEvent('scroll'));
+    assert.equal(env.view.goToChange('next').current, 2);
+    assert.equal(env.view.goToChange(99).current, 2);
+
+    const marks = env.view.getChangeMarks();
+    assert.equal(marks.rowCount, 201);
+    assert.deepEqual(Array.from(marks.starts), [10, 100, 152]);
+    assert.deepEqual(Array.from(marks.ends), [11, 102, 153]);
+    assert.deepEqual(Array.from(marks.flags), [3, 1, 2]);
+
+    // Alt with an arrow belongs to the page, not to the selection.
+    env.left.dispatchEvent(new FakeEvent('keydown', { key: 'ArrowDown', altKey: true }));
+    assert.equal(env.view.getSelection(), null);
+
+    env.view.resetToInput(fixture.sources);
+    assert.deepEqual(plain(env.view.getChangeSummary()), { total: 0, current: -1 });
+    assert.deepEqual(plain(env.view.goToChange('next')), { total: 0, current: -1 });
+});
+
+test('a change made only of moved lines is flagged as moved', function () {
+    const source = 'moved block line\nstays\nstays too';
+    const right = 'stays\nstays too\nmoved block line';
+    const fixture = modelFixture(source, right, [
+        { type: 'missing', leftLineIndex: 0, movedTo: 2 },
+        { type: 'match', leftLineIndex: 1, rightLineIndex: 0 },
+        { type: 'match', leftLineIndex: 2, rightLineIndex: 1 },
+        { type: 'added', rightLineIndex: 2, movedFrom: 0 }
+    ]);
+    const env = setupView();
+    env.view.setResult(fixture);
+    assert.deepEqual(Array.from(env.view.getChangeMarks().flags), [5, 6]);
+});
+
+test('showing only changes folds unchanged runs into one row and opens them on request', function () {
+    const fixture = changedFixture();
+    let viewChanges = 0;
+    const env = setupView({ onViewChange() { viewChanges++; } });
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    assert.equal(env.view.isCollapsed(), false);
+    assert.equal(mountedRows(env.left).length > 26, true);
+
+    assert.equal(env.view.setCollapsed(true), true);
+    assert.equal(viewChanges, 1);
+    env.animation.flushAll();
+    // Folds [0,7), [14,97), [105,149) and [156,201) leave 22 rows and 4 folds.
+    let marks = env.view.getChangeMarks();
+    assert.equal(marks.rowCount, 26);
+    assert.deepEqual(Array.from(marks.starts), [4, 12, 21]);
+    assert.deepEqual(Array.from(marks.ends), [5, 14, 22]);
+    assert.deepEqual(plain(env.view.getMountedRange()), { first: 0, last: 26 });
+    for (const pane of [env.left, env.right]) {
+        const rows = mountedRows(pane);
+        assert.equal(rows.length, 26);
+        assert.equal(pane.querySelector('.diff-spacer-after').style.height, '0px');
+        assert.deepEqual(
+            pane.querySelectorAll('.diff-fold').map(function (row) { return row.textContent; }),
+            ['7 unchanged lines', '83 unchanged lines', '44 unchanged lines', '45 unchanged lines']
+        );
+        assert.equal(rows[0].classList.contains('diff-fold'), true);
+        assert.equal(rows[1].getAttribute('data-row-index'), '7');
+        assert.equal(rows[4].getAttribute('data-row-index'), '10');
+        const button = rows[0].querySelector('button');
+        assert.equal(button.getAttribute('aria-label'), 'Show 7 unchanged lines');
+    }
+    assert.ok(env.view.getMountedNodeCount() <= virtual.renderBudgetsForTest.maxDomNodesBothPanes);
+
+    // A pointer position is read through the folds: display row 4 is model row 10.
+    env.left.dispatchEvent(new FakeEvent('pointerdown', { pointerId: 1, button: 0, clientX: 0, clientY: (4 * 21) + 5 }));
+    env.document.dispatchEvent(new FakeEvent('pointerup', { pointerId: 1, clientX: 0, clientY: (4 * 21) + 5 }));
+    assert.equal(env.view.getSelection().anchorSourceOffset, fixture.sources.left.indexOf('line number 10 '));
+
+    // Stepping between changes uses display positions.
+    assert.equal(env.view.goToChange(2).current, 2);
+    assert.equal(env.left.scrollTop, (21 - 10) * 21);
+
+    env.animation.flushAll();
+    env.right.querySelectorAll('.diff-fold')[1].querySelector('button').click();
+    env.animation.flushAll();
+    marks = env.view.getChangeMarks();
+    assert.equal(marks.rowCount, 26 + 83 - 1);
+    assert.deepEqual(Array.from(marks.starts), [4, 94, 103]);
+    // The opened rows are ordinary rows now; the folds below are outside the mounted window.
+    assert.equal(env.left.querySelector('[data-row-index="14"]') !== null, true);
+    assert.equal(env.left.querySelector('[data-fold-index="1"]'), null);
+
+    // Moving the selection into a folded line opens that fold.
+    env.view.setSelection({
+        side: 'left',
+        anchorSourceOffset: fixture.sources.left.indexOf('line number 120 '),
+        focusSourceOffset: fixture.sources.left.indexOf('line number 120 ')
+    });
+    assert.equal(env.view.getChangeMarks().rowCount, 108 + 44 - 1);
+    // With the first fold still closed, model row 120 is display row 114.
+    assert.equal(env.left.scrollTop <= 114 * 21 && env.left.scrollTop + 840 >= 115 * 21, true);
+    assert.equal(env.right.scrollTop, env.left.scrollTop);
+
+    // The setting survives a new result; opened folds do not.
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    assert.equal(env.view.isCollapsed(), true);
+    assert.equal(env.view.getChangeMarks().rowCount, 26);
+
+    env.left.scrollTop = 0;
+    assert.equal(env.view.setCollapsed(false), false);
+    env.animation.flushAll();
+    assert.equal(env.view.getChangeMarks().rowCount, 201);
+    assert.equal(env.left.querySelectorAll('.diff-fold').length, 0);
+});
+
+test('collapsing keeps the row at the top of the viewport in place and folds a result without changes', function () {
+    const fixture = changedFixture();
+    const env = setupView();
+    env.view.setResult(fixture);
+    env.left.scrollTop = (98 * 21) + 5;
+    env.left.dispatchEvent(new FakeEvent('scroll'));
+    env.animation.flushAll();
+    env.view.setCollapsed(true);
+    // Model row 98 is display row 10 once the two folds above it are closed.
+    assert.equal(env.left.scrollTop, (10 * 21) + 5);
+    assert.equal(env.right.scrollTop, (10 * 21) + 5);
+
+    const equal = equalFixture(50);
+    env.view.setResult(equal);
+    env.animation.flushAll();
+    assert.equal(env.view.getChangeMarks().rowCount, 1);
+    assert.equal(mountedRows(env.left)[0].textContent, '50 unchanged lines');
+});
+
+test('a click inside a change selects it and its rows can be read for merging', function () {
+    const fixture = changedFixture();
+    let viewChanges = 0;
+    const env = setupView({ onViewChange() { viewChanges++; } });
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    assert.equal(env.view.getChangeRows(-1), null);
+    assert.equal(env.view.getChangeRows(3), null);
+    assert.deepEqual(plain(env.view.getChangeRows(1)), { first: 100, last: 102 });
+
+    // Row 5 is unchanged: nothing is selected.
+    env.left.dispatchEvent(new FakeEvent('pointerdown', { pointerId: 1, button: 0, clientX: 0, clientY: (5 * 21) + 3 }));
+    env.document.dispatchEvent(new FakeEvent('pointerup', { pointerId: 1, clientX: 0, clientY: (5 * 21) + 3 }));
+    assert.equal(env.view.getChangeSummary().current, -1);
+
+    // Row 10 is the first change, also when clicked on the other side.
+    env.right.dispatchEvent(new FakeEvent('pointerdown', { pointerId: 2, button: 0, clientX: 600, clientY: (10 * 21) + 3 }));
+    env.document.dispatchEvent(new FakeEvent('pointerup', { pointerId: 2, clientX: 600, clientY: (10 * 21) + 3 }));
+    assert.equal(env.view.getChangeSummary().current, 0);
+    assert.equal(viewChanges, 1);
+    assert.equal(env.left.scrollTop, 0, 'selecting by click does not scroll');
+    env.animation.flushAll();
+    assert.equal(env.right.querySelectorAll('.diff-line-current').length, 1);
+});
+
+test('a scroll anchor keeps the viewport on the same source line in the next result', function () {
+    const fixture = changedFixture();
+    const env = setupView();
+    env.view.setResult(fixture);
+    assert.equal(env.view.getScrollAnchor('middle'), null);
+    env.left.scrollTop = (120 * 21) + 8;
+    env.left.dispatchEvent(new FakeEvent('scroll'));
+    // Model row 120 is left line 120 and, two removed lines later, right line 118.
+    assert.deepEqual(plain(env.view.getScrollAnchor('left')), { side: 'left', lineIndex: 120, offset: 8 });
+    const anchor = env.view.getScrollAnchor('right');
+    assert.deepEqual(plain(anchor), { side: 'right', lineIndex: 118, offset: 8 });
+
+    // The left text takes the right version of the first two changes: the
+    // right text is unchanged, and its line 118 is now row 118.
+    const core = virtual.diffCoreForTest;
+    let left = core.mergeDiffRows(fixture.sources.left, fixture.sources.right, fixture.model, 100, 102, 'right');
+    left = core.mergeDiffRows(left, fixture.sources.right,
+        core.computeDiffModel(left, fixture.sources.right, { workBudget: core.createDiffWorkBudget() }), 10, 11, 'right');
+    const merged = {
+        sources: { left, right: fixture.sources.right },
+        model: core.computeDiffModel(left, fixture.sources.right, { workBudget: core.createDiffWorkBudget() }),
+        anchor
+    };
+    env.view.setResult(merged);
+    assert.equal(env.view.getChangeSummary().total, 1);
+    assert.equal(env.left.scrollTop, (118 * 21) + 8);
+    assert.equal(env.right.scrollTop, (118 * 21) + 8);
+
+    // An anchor that no longer exists falls back to the top.
+    env.view.setResult(Object.assign({}, merged, { anchor: { side: 'right', lineIndex: 99999, offset: 0 } }));
+    assert.equal(env.left.scrollTop, 0);
+    env.view.resetToInput(merged.sources);
+    assert.equal(env.view.getScrollAnchor('left'), null);
+});
+
+function gutterTexts(row) {
+    return row.querySelectorAll('.diff-gutter').map(function (gutter) { return gutter.textContent; });
+}
+
+test('the unified view shows both texts in the left pane, removed lines above added lines', function () {
+    const fixture = changedFixture();
+    let viewChanges = 0;
+    const env = setupView({ onViewChange() { viewChanges++; } });
+
+    // The setting can be chosen before there is a result, but only a result is laid out as one pane.
+    assert.equal(env.view.setUnified(true), true);
+    assert.equal(env.view.isUnified(), true);
+    assert.equal(env.left.classList.contains('diff-unified'), false);
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    assert.equal(env.left.classList.contains('diff-unified'), true);
+    assert.equal(env.right.classList.contains('diff-unified-hidden'), true);
+    assert.equal(env.left.querySelector('.diff-window').getAttribute('aria-label'), 'Unified diff rows');
+    assert.equal(mountedRows(env.right).length, 0);
+
+    // 201 rows and one modified row that takes two lines.
+    let marks = env.view.getChangeMarks();
+    assert.equal(marks.rowCount, 202);
+    assert.deepEqual(Array.from(marks.starts), [10, 101, 153]);
+    assert.deepEqual(Array.from(marks.ends), [12, 103, 154]);
+
+    const rows = mountedRows(env.left);
+    assert.deepEqual(gutterTexts(rows[9]), ['10', '10']);
+    assert.equal(rows[9].classList.contains('diff-line-removed') || rows[9].classList.contains('diff-line-added'), false);
+    assert.equal(rows[10].getAttribute('data-row-index'), '10');
+    assert.equal(rows[10].getAttribute('data-side'), 'left');
+    assert.equal(rows[10].classList.contains('diff-line-removed'), true);
+    assert.deepEqual(gutterTexts(rows[10]), ['11', '']);
+    assert.match(rows[10].querySelector('.diff-content').textContent, /stays the same$/);
+    assert.equal(rows[11].getAttribute('data-row-index'), '10');
+    assert.equal(rows[11].getAttribute('data-side'), 'right');
+    assert.equal(rows[11].classList.contains('diff-line-added'), true);
+    assert.deepEqual(gutterTexts(rows[11]), ['', '11']);
+    assert.match(rows[11].querySelector('.diff-content').textContent, /was edited here$/);
+    assert.deepEqual(gutterTexts(rows[12]), ['12', '12']);
+    assert.ok(env.view.getMountedNodeCount() <= virtual.renderBudgetsForTest.maxDomNodesBothPanes);
+
+    // Stepping and the scroll anchor use the unified positions of each side's lines.
+    assert.equal(env.view.goToChange(2).current, 2);
+    assert.equal(env.left.scrollTop, (153 - 10) * 21);
+    // Display row 143 is model row 142, which is right line 140.
+    assert.deepEqual(plain(env.view.getScrollAnchor('right')), { side: 'right', lineIndex: 140, offset: 0 });
+
+    // Together with folds: 4 folds, 22 unchanged or one-sided rows and the two-line change.
+    env.view.setCollapsed(true);
+    marks = env.view.getChangeMarks();
+    assert.equal(marks.rowCount, 27);
+    assert.deepEqual(Array.from(marks.starts), [4, 13, 22]);
+    assert.deepEqual(Array.from(marks.ends), [6, 15, 23]);
+    assert.equal(env.view.goToChange(1).current, 1);
+    assert.equal(env.left.scrollTop, (13 - 10) * 21);
+
+    // A new result keeps the layout and can start at a line of either text:
+    // right line 150 is the added line, display row 22.
+    env.view.setResult(Object.assign({}, fixture, { anchor: { side: 'right', lineIndex: 150, offset: 4 } }));
+    assert.equal(env.left.classList.contains('diff-unified'), true);
+    assert.equal(env.left.scrollTop, (22 * 21) + 4);
+    env.view.setCollapsed(false);
+
+    viewChanges = 0;
+    assert.equal(env.view.setUnified(false), false);
+    assert.equal(viewChanges, 1);
+    env.animation.flushAll();
+    assert.equal(env.left.classList.contains('diff-unified'), false);
+    assert.equal(env.right.classList.contains('diff-unified-hidden'), false);
+    assert.equal(env.view.getChangeMarks().rowCount, 201);
+    assert.equal(mountedRows(env.right).length > 0, true);
+    assert.equal(mountedRows(env.left)[0].getAttribute('data-side'), null);
+
+    env.view.setUnified(true);
+    env.view.resetToInput(fixture.sources);
+    assert.equal(env.left.classList.contains('diff-unified'), false);
+    assert.equal(env.right.classList.contains('diff-unified-hidden'), false);
+
+    // Both panes are back for input after the view is destroyed, too.
+    env.view.setResult(fixture);
+    assert.equal(env.right.classList.contains('diff-unified-hidden'), true);
+    env.view.destroy();
+    assert.equal(env.left.classList.contains('diff-unified'), false);
+    assert.equal(env.right.classList.contains('diff-unified-hidden'), false);
+});
+
+test('a unified selection stays inside the text of the line it starts on', function () {
+    const fixture = changedFixture();
+    const env = setupView();
+    env.view.setUnified(true);
+    env.view.setResult(fixture);
+    env.animation.flushAll();
+    const leftLine10 = fixture.sources.left.indexOf('line number 10 ');
+    const rightLine10 = fixture.sources.right.indexOf('line number 10 ');
+    const rightLine12 = fixture.sources.right.indexOf('line number 12 ');
+    const at = function (displayIndex) { return { clientX: 0, clientY: (displayIndex * 21) + 4 }; };
+
+    // Display row 11 is the added half of the modified row: the right text.
+    env.left.dispatchEvent(new FakeEvent('pointerdown', Object.assign({ pointerId: 1, button: 0 }, at(11))));
+    assert.deepEqual(plain(env.view.getSelection()), {
+        side: 'right', anchorSourceOffset: rightLine10, focusSourceOffset: rightLine10
+    });
+    // Display row 13 is unchanged model row 12, read from the right text now.
+    env.document.dispatchEvent(new FakeEvent('pointerup', Object.assign({ pointerId: 1 }, at(13))));
+    assert.equal(env.view.getSelectedText('right'), fixture.sources.right.slice(rightLine10, rightLine12));
+    env.animation.flushAll();
+    assert.equal(mountedRows(env.left)[9].getAttribute('data-side'), 'right', 'unchanged lines follow the selection');
+    assert.equal(mountedRows(env.left)[10].getAttribute('data-side'), 'left');
+    assert.equal(mountedRows(env.left)[12].getAttribute('data-logically-selected'), 'true');
+
+    // Copying and the keyboard act on that text, although the pane is the left one.
+    const clipboard = createClipboardData();
+    env.left.dispatchEvent(new FakeEvent('copy', { clipboardData: clipboard }));
+    assert.equal(clipboard.getData('text/plain'), fixture.sources.right.slice(rightLine10, rightLine12));
+    env.left.dispatchEvent(new FakeEvent('keydown', { key: 'Home' }));
+    assert.deepEqual(plain(env.view.getSelection()), {
+        side: 'right', anchorSourceOffset: rightLine12, focusSourceOffset: rightLine12
+    });
+
+    // A selection of the left text dragged over the added line stops at the
+    // end of the change's last removed line.
+    env.left.dispatchEvent(new FakeEvent('pointerdown', Object.assign({ pointerId: 2, button: 0 }, at(10))));
+    env.document.dispatchEvent(new FakeEvent('pointerup', Object.assign({ pointerId: 2 }, at(11))));
+    assert.equal(env.view.getSelection().side, 'left');
+    assert.equal(env.view.getSelectedText('left'), 'line number 10 stays the same');
+    assert.equal(env.view.getChangeSummary().current, 0, 'the click selected the change');
+
+    // A selection of the right text dragged up over removed lines stops at the
+    // start of the change's first added line: rows 101-102 are removed only, so
+    // the next right line is the one after them.
+    env.left.dispatchEvent(new FakeEvent('pointerdown', Object.assign({ pointerId: 3, button: 0 }, at(11))));
+    env.document.dispatchEvent(new FakeEvent('pointerup', Object.assign({ pointerId: 3 }, at(10))));
+    assert.deepEqual(plain(env.view.getSelection()), {
+        side: 'right', anchorSourceOffset: rightLine10, focusSourceOffset: rightLine10
+    });
+    assert.equal(leftLine10, rightLine10);
 });
