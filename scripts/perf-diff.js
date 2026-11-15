@@ -18,7 +18,19 @@ const CASE_NAMES = [
     '100k-single-line-edit',
     'range-heavy-edits',
     'near-alignment-budget',
-    'conservative-fallback'
+    'conservative-fallback',
+    '25k-every-fifth-line-edited',
+    '25k-crlf-vs-lf',
+    '25k-trailing-space',
+    '25k-short-lines-trailing-space',
+    '25k-reindented',
+    '25k-unrelated-2m-chars',
+    '25k-shuffled-lines',
+    '25k-repeated-block-moved',
+    '25k-moved-block-every-fifth-edited',
+    '25k-ignore-case',
+    '25k-non-ascii-trailing-space',
+    '25k-nfc-vs-nfd'
 ];
 
 function runSuite() {
@@ -182,7 +194,179 @@ function createFixture(caseName) {
         );
     }
 
+    if (caseName === '25k-every-fifth-line-edited') {
+        const lines = codeLines(25000);
+        const edited = lines.map(function (line, index) {
+            return index % 5 === 0 ? line.replace('compute', 'calc') : line;
+        });
+        return fixture(lines.join('\n'), edited.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.matchedRows, 20000);
+            assert.equal(model.stats.modifiedRows, 5000);
+        });
+    }
+
+    if (caseName === '25k-crlf-vs-lf') {
+        const lines = codeLines(25000);
+        return fixture(lines.join('\r\n'), lines.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.matchedRows, 25000);
+            assert.equal(model.stats.lineEndingRows, 24999);
+            assert.equal(model.mismatchCount, 0);
+        });
+    }
+
+    if (caseName === '25k-trailing-space' || caseName === '25k-short-lines-trailing-space') {
+        const lines = caseName === '25k-trailing-space'
+            ? codeLines(25000)
+            : Array.from({ length: 25000 }, function (_, index) {
+                return 'const v' + index + ' = compute(' + index + ');';
+            });
+        return fixture(lines.join(' \n'), lines.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.matchedRows, 1);
+            assert.equal(model.stats.modifiedRows, 24999);
+            assert.equal(model.stats.alignment.fallbackHunks, 0);
+            assert.ok(model.stats.alignment.leftProfilesBuilt <= 25000);
+            assert.ok(model.stats.alignment.rightProfilesBuilt <= 25000);
+        });
+    }
+
+    if (caseName === '25k-reindented') {
+        const lines = codeLines(25000);
+        const indented = lines.map(function (line) { return '  ' + line; });
+        return fixture(lines.join('\n'), indented.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.modifiedRows, 25000);
+            assert.equal(model.stats.alignment.fallbackHunks, 0);
+        });
+    }
+
+    if (caseName === '25k-repeated-block-moved') {
+        // Thousands of identical lines leave one place and reappear in another:
+        // every one of them is a candidate for every other.
+        const lines = codeLines(15000);
+        const repeated = Array.from({ length: 10000 }, function () { return 'repeated filler line of text'; });
+        const left = repeated.concat(lines).join('\n');
+        const right = lines.concat(repeated).join('\n');
+        return fixture(left, right, function (model) {
+            assert.equal(model.rows.length, 35000);
+            assert.equal(model.stats.matchedRows, 15000);
+            assert.equal(model.stats.movedRows, 10000);
+        });
+    }
+
+    if (caseName === '25k-moved-block-every-fifth-edited') {
+        // A large block moves and every fifth line in it is edited on the way:
+        // each edited line has to be scored and diffed as part of the move.
+        const lines = codeLines(25000);
+        const block = lines.slice(0, 10000);
+        const rest = lines.slice(10000);
+        const edited = block.map(function (line, index) {
+            return index % 5 === 2 ? line.replace('compute', 'calc') : line;
+        });
+        return fixture(block.concat(rest).join('\n'), rest.concat(edited).join('\n'), function (model) {
+            assert.equal(model.rows.length, 35000);
+            assert.equal(model.stats.matchedRows, 15000);
+            assert.equal(model.stats.movedRows, 10000);
+            assert.equal(model.stats.movedChangedRows, 2000);
+        });
+    }
+
+    if (caseName === '25k-ignore-case') {
+        const lines = codeLines(25000);
+        const upper = lines.map(function (line, index) {
+            return index % 2 === 0 ? line.toUpperCase() : line;
+        });
+        return fixture(lines.join('\n'), upper.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.matchedRows, 25000);
+            assert.equal(model.stats.caseRows, 12500);
+            assert.equal(model.mismatchCount, 0);
+        }, { ignoreCase: true });
+    }
+
+    if (caseName === '25k-non-ascii-trailing-space' || caseName === '25k-nfc-vs-nfd') {
+        // Accented and Cyrillic text takes the normalization-aware paths that
+        // plain ASCII fixtures never reach.
+        const lines = Array.from({ length: 25000 }, function (_, index) {
+            return 'm\u00e4\u00e4r\u00e4 ' + index + ' = \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435(\u00f6ljy' + (index % 97) + ', \u00e9t\u00e9);';
+        });
+        if (caseName === '25k-non-ascii-trailing-space') {
+            return fixture(lines.join(' \n'), lines.join('\n'), function (model) {
+                assert.equal(model.rows.length, 25000);
+                assert.equal(model.stats.modifiedRows, 24999);
+                assert.equal(model.stats.normalizationRows, 0);
+                assert.equal(model.stats.alignment.fallbackHunks, 0);
+            });
+        }
+        const decomposed = lines.map(function (line) { return line.normalize('NFD'); });
+        return fixture(lines.join('\n'), decomposed.join('\n'), function (model) {
+            assert.equal(model.rows.length, 25000);
+            assert.equal(model.stats.modifiedRows, 25000);
+            assert.equal(model.stats.normalizationRows, 25000);
+            assert.equal(model.stats.alignment.fallbackHunks, 0);
+        });
+    }
+
+    if (caseName === '25k-unrelated-2m-chars') {
+        const left = randomLines(25000, 79, 1);
+        const right = randomLines(25000, 79, 2);
+        return fixture(left, right, function (model) {
+            assert.equal(left.length, 1999999);
+            assert.equal(right.length, 1999999);
+            assert.equal(model.rows.length, 50000);
+            assert.equal(model.stats.matchedRows, 0);
+            assert.equal(model.stats.missingRows, 25000);
+            assert.equal(model.stats.addedRows, 25000);
+        });
+    }
+
+    if (caseName === '25k-shuffled-lines') {
+        const lines = codeLines(25000);
+        const random = createRandom(3);
+        const reordered = lines.slice();
+        for (let i = reordered.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            const swap = reordered[i];
+            reordered[i] = reordered[j];
+            reordered[j] = swap;
+        }
+        return fixture(lines.join('\n'), reordered.join('\n'), function (model) {
+            assert.ok(model.stats.matchedRows >= 250, 'reordered lines lost their common order');
+            assert.ok(model.stats.workBudget.remainingMyersSteps > 0);
+        });
+    }
+
     throw new Error('Unknown performance case: ' + caseName);
+}
+
+function createRandom(seed) {
+    let value = seed >>> 0;
+    return function () {
+        value = ((value * 1664525) + 1013904223) >>> 0;
+        return value / 0x100000000;
+    };
+}
+
+function codeLines(count) {
+    const random = createRandom(7);
+    return Array.from({ length: count }, function (_, index) {
+        const value = Math.floor(random() * 0x100000000);
+        return '    const value_' + (value % 5000).toString(36)
+            + ' = compute(' + index + ', "' + value.toString(36) + '"); // some trailing comment text';
+    });
+}
+
+function randomLines(count, lineLength, seed) {
+    const random = createRandom(seed);
+    return Array.from({ length: count }, function () {
+        let line = '';
+        while (line.length < lineLength) {
+            line += Math.floor(random() * 0x100000000).toString(36);
+        }
+        return line.slice(0, lineLength);
+    }).join('\n');
 }
 
 function fixture(left, right, verify, options) {
@@ -322,6 +506,8 @@ function assertRowsAndReconstruction(model, left, right) {
     let nextRightLine = 0;
     let nextRangeOffset = 0;
     let mismatchCount = 0;
+    // Ranges of moved lines that were also edited, stored after all others.
+    const movedSegments = [];
     const leftParts = [];
     const rightParts = [];
 
@@ -335,9 +521,19 @@ function assertRowsAndReconstruction(model, left, right) {
         } else if (row.type === 'missing') {
             assertRowKeys(row, ['leftLineIndex', 'type'], label);
             mismatchCount++;
+            if (Object.hasOwn(row, 'leftRangeOffset')) {
+                assertRanges(model.changeBounds, row.leftRangeOffset, row.leftRangeCount,
+                    sourceLineLength(left, model.leftLineStarts, row.leftLineIndex), label + '.leftRanges');
+                movedSegments.push([row.leftRangeOffset, row.leftRangeCount * 2]);
+            }
         } else if (row.type === 'added') {
             assertRowKeys(row, ['rightLineIndex', 'type'], label);
             mismatchCount++;
+            if (Object.hasOwn(row, 'rightRangeOffset')) {
+                assertRanges(model.changeBounds, row.rightRangeOffset, row.rightRangeCount,
+                    sourceLineLength(right, model.rightLineStarts, row.rightLineIndex), label + '.rightRanges');
+                movedSegments.push([row.rightRangeOffset, row.rightRangeCount * 2]);
+            }
         } else if (row.type === 'modified') {
             assertRowKeys(row, [
                 'detailMode', 'leftLineIndex', 'leftRangeCount', 'leftRangeOffset',
@@ -388,6 +584,11 @@ function assertRowsAndReconstruction(model, left, right) {
 
     assert.equal(nextLeftLine, model.leftLineStarts.length);
     assert.equal(nextRightLine, model.rightLineStarts.length);
+    movedSegments.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    for (let index = 0; index < movedSegments.length; index++) {
+        assert.equal(movedSegments[index][0], nextRangeOffset, 'moved-line ranges must be packed after the others');
+        nextRangeOffset += movedSegments[index][1];
+    }
     assert.equal(nextRangeOffset, model.changeBounds.length, 'every compact range must be referenced exactly once');
     assert.equal(leftParts.join('\n'), left, 'rows must reconstruct the exact left source');
     assert.equal(rightParts.join('\n'), right, 'rows must reconstruct the exact right source');
@@ -396,7 +597,18 @@ function assertRowsAndReconstruction(model, left, right) {
 }
 
 function assertRowKeys(row, expected, label) {
-    assert.deepEqual(Object.keys(row).sort(), expected.slice().sort(), label + ' has non-compact fields');
+    // A moved line also carries the line index of its counterpart.
+    const optional = row.type === 'missing' ? 'movedTo' : (row.type === 'added' ? 'movedFrom' : null);
+    // A moved line that was also edited carries its changed ranges as well.
+    const side = row.type === 'missing' ? 'left' : 'right';
+    const ranges = optional && Object.hasOwn(row, optional) ? [side + 'RangeOffset', side + 'RangeCount'] : [];
+    assert.equal(Object.hasOwn(row, ranges[0] || 'type'), Object.hasOwn(row, ranges[1] || 'type'));
+    const keys = Object.keys(row).filter(function (key) { return key !== optional && ranges.indexOf(key) < 0; });
+    assert.deepEqual(keys.sort(), expected.slice().sort(), label + ' has non-compact fields');
+    if (optional && Object.hasOwn(row, optional)) {
+        assert.equal(Number.isSafeInteger(row[optional]) && row[optional] >= 0, true,
+            label + ' ' + optional + ' must be a line index');
+    }
 }
 
 function assertRanges(bounds, offset, count, lineLength, label) {

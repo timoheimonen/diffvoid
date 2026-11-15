@@ -11,6 +11,9 @@
         const counter = document.getElementById('mismatch-counter');
         const progressEl = document.getElementById('progress-indicator');
         const renderNotice = document.getElementById('render-notice');
+        const compareNotice = document.getElementById('compare-notice');
+        const whitespaceToggle = document.getElementById('whitespace-toggle');
+        const caseToggle = document.getElementById('case-toggle');
         const copyButtons = {
             left: document.getElementById('copy-left'),
             right: document.getElementById('copy-right')
@@ -31,7 +34,11 @@
                 left: panes.left.textContent || '',
                 right: panes.right.textContent || ''
             },
-            mode: 'input'
+            mode: 'input',
+            // Not remembered between visits: a forgotten setting would hide
+            // differences without the user noticing.
+            ignoreWhitespace: false,
+            ignoreCase: false
         };
 
         const view = createVirtualDiffView({
@@ -41,6 +48,7 @@
             requestAnimationFrame: window.requestAnimationFrame.bind(window),
             cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
             stripInvisibleCharacters: window.DiffCore.stripInvisibleCharacters,
+            findEquivalentRanges: window.DiffCore.findCanonicallyEquivalentRanges,
             onRenderingReduced: function (message) {
                 if (!renderNotice) return;
                 renderNotice.textContent = message;
@@ -82,21 +90,58 @@
         }
 
         function hideCounter() {
+            hideCompareNotice();
             if (!counter) return;
             counter.style.display = 'none';
             counter.classList.remove('all-match');
         }
 
-        function setCounter(mismatchCount) {
+        function rowCountText(count) {
+            return count.toLocaleString() + ' row' + (count === 1 ? '' : 's');
+        }
+
+        function setCounter(model) {
             if (!counter) return;
+            const mismatchCount = model.mismatchCount;
+            const lineEndingRows = model.stats.lineEndingRows || 0;
+            const whitespaceRows = model.stats.whitespaceRows || 0;
+            const caseRows = model.stats.caseRows || 0;
             if (mismatchCount > 0) {
                 counter.textContent = mismatchCount + ' difference row' + (mismatchCount === 1 ? '' : 's');
                 counter.classList.remove('all-match');
             } else {
-                counter.textContent = '100% Match';
+                // Rows that differ only in what the comparison sets aside are
+                // not differences, but the texts are not identical either.
+                counter.textContent = whitespaceRows > 0 || caseRows > 0 || lineEndingRows > 0
+                    ? '0 difference rows'
+                    : '100% Match';
                 counter.classList.add('all-match');
             }
             counter.style.display = 'block';
+
+            if (!compareNotice) return;
+            const ignored = [];
+            if (caseRows > 0) ignored.push('case ' + rowCountText(caseRows));
+            if (whitespaceRows > 0) ignored.push('whitespace ' + rowCountText(whitespaceRows));
+            if (lineEndingRows > 0) ignored.push('line endings ' + rowCountText(lineEndingRows));
+            const notes = [];
+            const movedRows = model.stats.movedRows || 0;
+            const normalizationRows = model.stats.normalizationRows || 0;
+            const movedChangedRows = model.stats.movedChangedRows || 0;
+            if (movedRows > 0) {
+                notes.push(movedRows.toLocaleString() + ' line' + (movedRows === 1 ? '' : 's') + ' moved'
+                    + (movedChangedRows > 0 ? ' (' + movedChangedRows.toLocaleString() + ' changed)' : ''));
+            }
+            if (normalizationRows > 0) notes.push('NFC/NFD: ' + rowCountText(normalizationRows));
+            if (ignored.length) notes.push('Ignored: ' + ignored.join(', '));
+            compareNotice.textContent = notes.join(' · ');
+            compareNotice.style.display = notes.length ? 'block' : 'none';
+        }
+
+        function hideCompareNotice() {
+            if (!compareNotice) return;
+            compareNotice.textContent = '';
+            compareNotice.style.display = 'none';
         }
 
         function hideRenderNotice() {
@@ -155,7 +200,7 @@
                 return;
             }
 
-            setCounter(model.mismatchCount);
+            setCounter(model);
             showResultControls();
             hideProgress();
             updateEmptyState();
@@ -167,9 +212,11 @@
             showProgress(error && error.message ? error.message : 'Comparison failed.');
         }
 
-        function computeModel(leftText, rightText) {
+        function computeModel(leftText, rightText, request) {
             return window.DiffCore.computeDiffModel(leftText, rightText, {
-                workBudget: window.DiffCore.createDiffWorkBudget()
+                workBudget: window.DiffCore.createDiffWorkBudget(),
+                ignoreWhitespace: !!(request && request.ignoreWhitespace),
+                ignoreCase: !!(request && request.ignoreCase)
             });
         }
 
@@ -202,7 +249,9 @@
             controller.start({
                 left: leftText,
                 right: rightText,
-                isSyncSafe: classification.isSyncSafe
+                isSyncSafe: classification.isSyncSafe,
+                ignoreWhitespace: state.ignoreWhitespace,
+                ignoreCase: state.ignoreCase
             });
         }
 
@@ -238,6 +287,20 @@
 
         bindInput('left');
         bindInput('right');
+
+        function bindOptionToggle(button, option) {
+            if (!button) return;
+            button.addEventListener('click', function () {
+                state[option] = !state[option];
+                button.setAttribute('aria-pressed', String(state[option]));
+                controller.cancel({ invalidate: true, reason: 'options-changed' });
+                resetToInput();
+                compare();
+            });
+        }
+
+        bindOptionToggle(whitespaceToggle, 'ignoreWhitespace');
+        bindOptionToggle(caseToggle, 'ignoreCase');
 
         const themeToggle = document.getElementById('theme-toggle');
         if (themeToggle) themeToggle.addEventListener('click', window.diffvoidTheme.toggleTheme);

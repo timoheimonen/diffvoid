@@ -174,6 +174,15 @@ test('starts one worker with a tagged v2 request and completes atomically', func
     assert.equal(worker.messages[0].inputRevision, token.inputRevision);
     assert.equal(worker.messages[0].left, 'left');
     assert.equal(worker.messages[0].right, 'right');
+    assert.equal(worker.messages[0].ignoreWhitespace, false);
+    assert.equal(worker.messages[0].ignoreCase, false);
+    const relaxed = createHarness();
+    relaxed.controller.start({
+        left: 'left', right: 'right', isSyncSafe: false, ignoreWhitespace: true, ignoreCase: true
+    });
+    assert.equal(FakeWorker.instances[FakeWorker.instances.length - 1].messages[0].ignoreWhitespace, true);
+    assert.equal(FakeWorker.instances[FakeWorker.instances.length - 1].messages[0].ignoreCase, true);
+    relaxed.controller.destroy();
     assert.equal(harness.clock.pendingCount(), 2);
     assert.equal(harness.controller.getState().activeJob.state, 'starting');
 
@@ -361,6 +370,8 @@ test('a safe input may use the same job token for sync fallback when constructio
     assert.equal(fallbackCall.right, 'small-b');
     assert.equal(fallbackCall.meta.jobId, token.jobId);
     assert.equal(fallbackCall.meta.inputRevision, token.inputRevision);
+    assert.equal(fallbackCall.meta.ignoreWhitespace, false);
+    assert.equal(fallbackCall.meta.ignoreCase, false);
     assert.equal(harness.results.length, 1);
     assert.equal(harness.results[0].model.sync, true);
     assert.equal(harness.results[0].meta.mode, 'sync');

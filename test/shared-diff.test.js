@@ -14,6 +14,7 @@ function loadSharedDiff(contextOverrides) {
 root.__DiffCoreTest = Object.freeze({
     validateDiffInput: validateDiffInput,
     computeMyersRanges: computeMyersRanges,
+    computeLineRanges: computeLineRanges,
     splitDiffUnits: splitDiffUnits,
     computeIntralineChangeRanges: computeIntralineChangeRanges,
     DIFF_WORK_BUDGET_DEFAULTS: DIFF_WORK_BUDGET_DEFAULTS,
@@ -104,11 +105,26 @@ function assertCurrentModelSchema(model) {
     for (let rowIndex = 0; rowIndex < model.rows.length; rowIndex++) {
         const row = model.rows[rowIndex];
         assert.ok(Object.hasOwn(rowKeys, row.type), 'rows[' + rowIndex + '] has an unknown type');
+        // A moved line carries the index of its counterpart on the other side.
+        const optional = row.type === 'missing' ? 'movedTo' : (row.type === 'added' ? 'movedFrom' : null);
+        // A moved line that was also edited carries its changed ranges, and
+        // only a moved line may.
+        const side = row.type === 'missing' ? 'left' : 'right';
+        const ranges = optional && Object.hasOwn(row, optional) ? [side + 'RangeOffset', side + 'RangeCount'] : [];
+        if (ranges.length) {
+            assert.equal(Object.hasOwn(row, ranges[0]), Object.hasOwn(row, ranges[1]));
+        }
+        const keys = Object.keys(row).filter(function (key) {
+            return key !== optional && ranges.indexOf(key) < 0;
+        });
         assert.deepEqual(
-            Object.keys(row).sort(),
+            keys.sort(),
             rowKeys[row.type].slice().sort(),
             'rows[' + rowIndex + '] has an unexpected shape'
         );
+        if (optional && Object.hasOwn(row, optional)) {
+            assert.equal(Number.isInteger(row[optional]) && row[optional] >= 0, true);
+        }
     }
 
     while (pending.length > 0) {
@@ -288,7 +304,7 @@ function bruteForceAlignmentOracle(leftCount, rightCount, scores) {
 }
 
 function exactMyersAnchorPairs(left, right) {
-    const ranges = diff.computeMyersRanges(left.split('\n'), right.split('\n'));
+    const ranges = diff.computeLineRanges(left.split('\n'), right.split('\n'));
     const pairs = [];
     for (const range of ranges) {
         if (range.type !== 'equal') continue;
@@ -507,13 +523,195 @@ test('input validation rejects excessive character, line, and line-length inputs
     assert.match(diff.validateDiffInput('x'.repeat(2000001), 'b').message, /Maximum 2,000,000 characters/);
     assert.match(diff.validateDiffInput(Array.from({ length: 25001 }, function () { return 'x'; }).join('\n'), 'b').message, /Maximum 25,000 lines/);
     assert.match(diff.validateDiffInput('x'.repeat(100001), 'b').message, /Maximum 100,000 characters per line/);
-    assert.match(
+    assert.equal(
         diff.validateDiffInput(
             Array.from({ length: 6001 }, function (_, index) { return 'left ' + index; }).join('\n'),
             Array.from({ length: 6001 }, function (_, index) { return 'right ' + index; }).join('\n')
-        ).message,
-        /too different/
+        ).ok,
+        true
     );
+});
+
+function assertValidRanges(ranges, left, right, label) {
+    let leftPos = 0;
+    let rightPos = 0;
+    for (const range of ranges) {
+        assert.equal(range.leftStart, leftPos, label);
+        assert.equal(range.rightStart, rightPos, label);
+        const leftLength = range.leftEnd - range.leftStart;
+        const rightLength = range.rightEnd - range.rightStart;
+        if (range.type === 'equal') {
+            assert.equal(leftLength > 0 && leftLength === rightLength, true, label);
+            for (let offset = 0; offset < leftLength; offset++) {
+                assert.equal(left[range.leftStart + offset], right[range.rightStart + offset], label);
+            }
+        } else if (range.type === 'delete') {
+            assert.equal(leftLength > 0 && rightLength === 0, true, label);
+        } else {
+            assert.equal(range.type, 'insert', label);
+            assert.equal(leftLength === 0 && rightLength > 0, true, label);
+        }
+        leftPos = range.leftEnd;
+        rightPos = range.rightEnd;
+    }
+    assert.equal(leftPos, left.length, label);
+    assert.equal(rightPos, right.length, label);
+}
+
+function shuffled(items, random) {
+    const result = items.slice();
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        const swap = result[i];
+        result[i] = result[j];
+        result[j] = swap;
+    }
+    return result;
+}
+
+test('line ranges ignore one-sided lines without losing the shortest edit script', function () {
+    const random = createRandom(13572468);
+    const alphabet = ['a', 'b', 'c', 'd', '', '}', 'left only 1', 'left only 2', 'right only 1', 'right only 2'];
+
+    for (let caseIndex = 0; caseIndex < 1000; caseIndex++) {
+        const left = Array.from({ length: Math.floor(random() * 14) }, function () {
+            return alphabet[Math.floor(random() * 8)];
+        });
+        const right = Array.from({ length: Math.floor(random() * 14) }, function () {
+            const index = Math.floor(random() * 8);
+            return alphabet[index < 6 ? index : index + 2];
+        });
+
+        const ranges = diff.computeLineRanges(left, right);
+        assertValidRanges(ranges, left, right, 'case ' + caseIndex);
+        assert.equal(editDistanceFromRanges(ranges), lcsEditDistance(left, right));
+    }
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(diff.computeLineRanges(['x', 'same', 'y'], ['same', 'z']))),
+        [
+            { type: 'delete', leftStart: 0, leftEnd: 1, rightStart: 0, rightEnd: 0 },
+            { type: 'equal', leftStart: 1, leftEnd: 2, rightStart: 0, rightEnd: 1 },
+            { type: 'delete', leftStart: 2, leftEnd: 3, rightStart: 1, rightEnd: 1 },
+            { type: 'insert', leftStart: 3, leftEnd: 3, rightStart: 1, rightEnd: 2 }
+        ]
+    );
+});
+
+test('abandoned exact searches still produce valid, terminating edit scripts', function () {
+    const random = createRandom(97531);
+
+    for (let caseIndex = 0; caseIndex < 120; caseIndex++) {
+        const leftCount = 300 + Math.floor(random() * 400);
+        const rightCount = 300 + Math.floor(random() * 400);
+        const symbolCount = [2, 3, 5, 12, 60, 400][caseIndex % 6];
+        let left;
+        let right;
+        if (caseIndex % 3 === 0) {
+            left = Array.from({ length: leftCount }, function () {
+                return 'x' + Math.floor(random() * symbolCount);
+            });
+            right = Array.from({ length: rightCount }, function () {
+                return 'x' + Math.floor(random() * symbolCount);
+            });
+        } else if (caseIndex % 3 === 1) {
+            left = Array.from({ length: leftCount }, function (_, index) { return 'u' + index; });
+            right = shuffled(left, random).slice(0, rightCount);
+        } else {
+            left = Array.from({ length: leftCount }, function (_, index) {
+                return random() < 0.3 ? '' : 'u' + index;
+            });
+            const cut = Math.floor(random() * leftCount);
+            right = left.slice(cut).concat(left.slice(0, cut));
+        }
+
+        const exactDistance = editDistanceFromRanges(diff.computeMyersRanges(left, right));
+        for (const maxSplitCost of [1, 2, 4, 16]) {
+            const label = 'case ' + caseIndex + ' cost ' + maxSplitCost;
+            const generic = diff.computeMyersRanges(left, right, { maxSplitCost: maxSplitCost });
+            assertValidRanges(generic, left, right, label);
+            assert.equal(editDistanceFromRanges(generic) >= exactDistance, true, label);
+
+            const lines = diff.computeLineRanges(left, right, {
+                maxSplitCost: maxSplitCost,
+                exactSteps: 0
+            });
+            assertValidRanges(lines, left, right, label);
+            assert.equal(editDistanceFromRanges(lines) >= exactDistance, true, label);
+        }
+    }
+});
+
+test('unique-line anchors recover the longest common order of reordered lines', function () {
+    const random = createRandom(424242);
+    const left = Array.from({ length: 700 }, function (_, index) { return 'unique ' + index; });
+    const right = shuffled(left, random);
+
+    const approximate = diff.computeLineRanges(left, right, { maxSplitCost: 1, exactSteps: 0 });
+    assertValidRanges(approximate, left, right, 'shuffled');
+    assert.equal(editDistanceFromRanges(approximate), lcsEditDistance(left, right));
+
+    const blocks = [];
+    for (let block = 0; block < 6; block++) {
+        blocks.push(left.slice(block * 100, (block + 1) * 100));
+    }
+    const reordered = [blocks[3], blocks[0], blocks[1], blocks[5], blocks[2], blocks[4]].flat();
+    const moved = diff.computeLineRanges(left.slice(0, 600), reordered, { maxSplitCost: 1, exactSteps: 0 });
+    assertValidRanges(moved, left.slice(0, 600), reordered, 'moved blocks');
+    assert.equal(editDistanceFromRanges(moved), lcsEditDistance(left.slice(0, 600), reordered));
+});
+
+test('the exact line search is kept while the step budget allows it', function () {
+    const left = Array.from({ length: 2000 }, function (_, index) { return 'line ' + index; });
+    const right = left.slice(400).concat(left.slice(0, 400));
+    const workBudget = diff.createDiffWorkBudget();
+    const model = diff.computeDiffModel(left.join('\n'), right.join('\n'), { workBudget: workBudget });
+
+    assert.equal(model.stats.matchedRows, 1600);
+    assert.equal(model.stats.missingRows, 400);
+    assert.equal(model.stats.addedRows, 400);
+    assert.equal(
+        workBudget.remainingMyersSteps > diff.DIFF_WORK_BUDGET_DEFAULTS.remainingMyersSteps - 12000000,
+        true
+    );
+});
+
+test('wholesale-different and heavily reordered inputs are compared instead of rejected', function () {
+    const count = 6100;
+    const lines = Array.from({ length: count }, function (_, index) {
+        return 'const value' + index + ' = compute(' + index + ');';
+    });
+
+    const trailing = diff.computeDiffModel(lines.join(' \n'), lines.join('\n'));
+    assert.equal(trailing.rows.length, count);
+    assert.equal(trailing.stats.modifiedRows, count - 1);
+    assert.equal(trailing.stats.matchedRows, 1);
+    assert.equal(trailing.stats.alignment.leftProfilesBuilt <= count, true);
+    assert.equal(trailing.stats.alignment.rightProfilesBuilt <= count, true);
+
+    const everyFifth = lines.map(function (line, index) {
+        return index % 5 === 0 ? line.replace('compute', 'calc') : line;
+    });
+    const scattered = diff.computeDiffModel(lines.join('\n'), everyFifth.join('\n'));
+    assert.equal(scattered.stats.modifiedRows, count / 5);
+    assert.equal(scattered.stats.matchedRows, count - (count / 5));
+
+    const unrelatedLeft = Array.from({ length: count }, function (_, index) { return 'left ' + index; });
+    const unrelatedRight = Array.from({ length: count }, function (_, index) { return 'RIGHT-' + index; });
+    const unrelated = diff.computeDiffModel(unrelatedLeft.join('\n'), unrelatedRight.join('\n'));
+    assert.equal(unrelated.stats.matchedRows, 0);
+    assert.equal(unrelated.stats.modifiedRows + unrelated.stats.missingRows, count);
+    assert.equal(unrelated.stats.modifiedRows + unrelated.stats.addedRows, count);
+
+    const random = createRandom(8642);
+    const reordered = shuffled(lines, random);
+    const workBudget = diff.createDiffWorkBudget();
+    const shuffledModel = diff.computeDiffModel(lines.join('\n'), reordered.join('\n'), {
+        workBudget: workBudget
+    });
+    assertModelAlignmentInvariants(shuffledModel, lines.join('\n'), reordered.join('\n'));
+    assert.equal(shuffledModel.stats.matchedRows > 0, true);
+    assert.equal(workBudget.remainingMyersSteps > 0, true);
 });
 
 test('DiffModelV2 exposes the semantic difference-row count', function () {
@@ -638,11 +836,69 @@ test('compact intraline ranges use half-open UTF-16 grapheme offsets', function 
     assert.equal(combiningRow.detailMode, 'precise');
     assert.deepEqual(Array.from(combining.changeBounds), [3, 5, 3, 4]);
 
-    const separated = diff.computeDiffModel('axbxc', 'aybyc');
+    const separated = diff.computeDiffModel('a x b x c', 'a y b y c');
     const separatedRow = separated.rows[0];
     assert.equal(separatedRow.leftRangeCount, 2);
     assert.equal(separatedRow.rightRangeCount, 2);
-    assert.deepEqual(Array.from(separated.changeBounds), [1, 2, 3, 4, 1, 2, 3, 4]);
+    assert.deepEqual(Array.from(separated.changeBounds), [2, 3, 6, 7, 2, 3, 6, 7]);
+});
+
+test('intraline ranges follow word boundaries instead of scattered characters', function () {
+    function marked(left, right) {
+        const model = diff.computeDiffModel(left, right);
+        const row = model.rows[0];
+        assert.equal(row.type, 'modified');
+        assert.equal(row.detailMode, 'precise');
+        function mark(text, offset, count) {
+            let out = '';
+            let position = 0;
+            for (let index = 0; index < count; index++) {
+                const start = model.changeBounds[offset + index * 2];
+                const end = model.changeBounds[offset + index * 2 + 1];
+                out += text.slice(position, start) + '[' + text.slice(start, end) + ']';
+                position = end;
+            }
+            return out + text.slice(position);
+        }
+        return [
+            mark(left, row.leftRangeOffset, row.leftRangeCount),
+            mark(right, row.rightRangeOffset, row.rightRangeCount)
+        ];
+    }
+
+    // Numbers are replaced whole, never digit by digit.
+    assert.deepEqual(
+        marked('timeout: 15000, retries: 3', 'timeout: 30000, retries: 5'),
+        ['timeout: [15000], retries: [3]', 'timeout: [30000], retries: [5]']
+    );
+    // Words that share most of their start and end keep the shared part unmarked.
+    assert.deepEqual(
+        marked('return this.handleRequest(req, res);', 'return this.handleResponse(req, res);'),
+        ['return this.handleRe[quest](req, res);', 'return this.handleRe[sponse](req, res);']
+    );
+    assert.deepEqual(
+        marked('color = "grey"', 'colour = "gray"'),
+        ['color = "gr[e]y"', 'colo[u]r = "gr[a]y"']
+    );
+    // Words with little in common are replaced whole.
+    assert.deepEqual(
+        marked('The quick brown fox jumps over the lazy dog', 'The quick red fox jumps over the sleepy dog'),
+        ['The quick [brown] fox jumps over the [lazy] dog', 'The quick [red] fox jumps over the [sleepy] dog']
+    );
+    // Punctuation and whitespace still diff one character at a time.
+    assert.deepEqual(marked('  foo();', '    foo();'), ['  foo();', '  [  ]foo();']);
+    assert.deepEqual(marked('foo(a)', 'foo(a, b, c)'), ['foo(a)', 'foo(a[, b, c])']);
+    // A character inserted inside a word is marked alone, hidden ones included.
+    assert.deepEqual(marked('foo\u200Bbar baz', 'foobar baz'), ['foo[\u200B]bar baz', 'foobar baz']);
+    assert.deepEqual(marked('co\u00ADoperate now', 'cooperate now'), ['co[\u00AD]operate now', 'cooperate now']);
+    assert.deepEqual(marked('foobar baz', 'foo-bar baz'), ['foobar baz', 'foo[-]bar baz']);
+    // A changed number inside a longer replaced stretch is still never cut in two.
+    assert.deepEqual(marked('size 15000px', 'size 25000px'), ['size [15000px]', 'size [25000px]']);
+    // Scripts written without spaces keep character precision.
+    assert.deepEqual(
+        marked('\u3053\u308c\u306f\u53e4\u3044\u672c\u3067\u3059', '\u3042\u308c\u306f\u53e4\u3044\u7d19\u3067\u3059'),
+        ['[\u3053]\u308c\u306f\u53e4\u3044[\u672c]\u3067\u3059', '[\u3042]\u308c\u306f\u53e4\u3044[\u7d19]\u3067\u3059']
+    );
 });
 
 test('DiffWorkBudget and model range limits use atomic whole-line fallback', function () {
@@ -661,7 +917,7 @@ test('DiffWorkBudget and model range limits use atomic whole-line fallback', fun
         { maxRangePairsPerRow: 4096, maxRangePairsTotal: 200000 }
     );
 
-    const rowLimited = diff.computeDiffModel('axbxc', 'aybyc', {
+    const rowLimited = diff.computeDiffModel('a x b x c', 'a y b y c', {
         modelLimits: { maxRangePairsPerRow: 3 }
     });
     assert.equal(rowLimited.rows[0].detailMode, 'whole-line');
@@ -889,6 +1145,100 @@ test('bounded row alignment finds both globally compatible modified pairs', func
     const model = diff.computeDiffModel('abc1\nabc1y', 'abc2\nabc1x');
     assert.deepEqual(Array.from(model.rows, function (row) { return row.type; }), ['modified', 'modified']);
     assert.equal(model.mismatchCount, 2);
+});
+
+test('long lines changed at both ends and extended lines pair as modified rows', function () {
+    const cases = [
+        [
+            '    const total = computeTotal(items, taxRate, discount)',
+            '        const total = computeTotal(items, taxRate, discount);'
+        ],
+        [
+            '  const total = computeTotal(items, taxRate, discount)\r',
+            '    const total = computeTotal(items, taxRate, discount)'
+        ],
+        [
+            'The quick brown fox jumps over the lazy dog',
+            'The quick red fox jumps over the sleepy dog'
+        ],
+        ['x = 1;', 'x = 1; // initial value for the counter'],
+        ['foo(a)', 'foo(a, b, c, d, e)'],
+        ['<main>', '<main aria-label="Text comparison workspace">'],
+        [
+            'Then visit `http://localhost:8000`.',
+            'Then visit `http://localhost:8000`. The static pages are linked without the `.html` extension.'
+        ]
+    ];
+
+    for (const [left, right] of cases) {
+        assert.deepEqual(types(left, right), ['modified'], left);
+        assert.deepEqual(types(right, left), ['modified'], right);
+    }
+});
+
+test('shared closers and heavily rewritten lines stay add/remove pairs', function () {
+    const cases = [
+        ['    </div>', '    <div><strong>Copy</strong><span>Take either side as is.</span></div>'],
+        ['</li>', 'like Latin letters, with tooltips explaining the real Unicode character.</span></li>'],
+        ['}', '} catch (error) { report(error); }'],
+        [
+            'The quick brown fox jumps over the lazy dog',
+            'The slow red fox leaps over the sleepy dog'
+        ],
+        [
+            'const result = computeTotal(items, taxRate);',
+            'const output = calculateSum(items, vatRate);'
+        ]
+    ];
+
+    for (const [left, right] of cases) {
+        assert.deepEqual(types(left, right), ['missing', 'added'], left);
+        assert.deepEqual(types(right, left), ['missing', 'added'], right);
+    }
+});
+
+test('oversized extensions and reordered long lines do not drain the shared detail budget', function () {
+    const head = 'The opening words of a hard-wrapped paragraph';
+    const wrapped = [];
+    const unwrapped = [];
+    for (let index = 0; index < 100; index++) {
+        wrapped.push(head + ' ' + index, 'continuation ' + index);
+        unwrapped.push(head + ' ' + index + ' ' + 'and then a long remainder of that paragraph. '.repeat(20));
+    }
+    const longWords = Array.from({ length: 600 }, function (_, index) { return 'word' + (index % 37); });
+    const reordered = longWords.slice(300).concat(longWords.slice(0, 300));
+    const left = wrapped.concat([longWords.join(' '), 'final value = 1']).join('\n');
+    const right = unwrapped.concat([reordered.join(' '), 'final value = 2']).join('\n');
+
+    const workBudget = diff.createDiffWorkBudget();
+    const model = diff.computeDiffModel(left, right, { workBudget: workBudget });
+    const last = model.rows.at(-1);
+
+    assert.equal(last.type, 'modified');
+    assert.equal(last.detailMode, 'precise');
+    assert.equal(model.stats.modifiedRows, 2);
+    assert.equal(model.stats.missingRows, 200);
+    assert.equal(model.stats.addedRows, 100);
+    assert.equal(model.stats.wholeLineRows, 0);
+    assert.equal(workBudget.remainingCharEditDistance, 49966);
+});
+
+test('a candidate that agrees in position outranks one that only shares content', function () {
+    const left = "divider.addEventListener('dblclick', function () {";
+    const samePosition = "divider.addEventListener('dblclick', resetDivider);";
+    const sameContent = "divider.addEventListener('keydown', function (event) {";
+
+    assert.equal(
+        diff.quantizedModifiedLineScore(left, samePosition).scoreQ
+            > diff.quantizedModifiedLineScore(left, sameContent).scoreQ,
+        true
+    );
+
+    const model = diff.computeDiffModel(left, samePosition + '\n' + sameContent);
+    assert.deepEqual(
+        Array.from(model.rows, function (row) { return row.type; }),
+        ['modified', 'added']
+    );
 });
 
 test('DiffModelV2 alignment preserves the hardcoded presentation golden corpus', function () {
@@ -1490,3 +1840,457 @@ test('alignment is deterministic and preserves reconstruction and hunk-level swa
         assert.equal(forward.actions.length, swapped.actions.length);
     }
 });
+
+function rowSummary(model) {
+    return model.rows.map(function (row) { return row.type; }).join(' ');
+}
+
+test('CRLF and LF line endings compare equal and are reported separately', function () {
+    const windows = diff.computeDiffModel('a\r\nb\r\nc', 'a\nb\nc');
+    assert.equal(rowSummary(windows), 'match match match');
+    assert.equal(windows.mismatchCount, 0);
+    assert.equal(windows.stats.lineEndingRows, 2);
+    assert.deepEqual(Array.from(windows.leftLineStarts), [0, 3, 6]);
+
+    // A real edit next to a line-ending difference is still found and its
+    // ranges are offsets into the line without the carriage return.
+    const edited = diff.computeDiffModel('same\r\nvalue = 10\r\nend\r\n', 'same\nvalue = 20\nend\n');
+    assert.equal(rowSummary(edited), 'match modified match match');
+    assert.equal(edited.mismatchCount, 1);
+    assert.equal(edited.stats.lineEndingRows, 3);
+    assert.deepEqual(Array.from(edited.changeBounds), [8, 10, 8, 10]);
+
+    // Identical mixed endings are not a difference; differing ones count per row.
+    const sameMixed = diff.computeDiffModel('a\r\nb\nc\n', 'a\r\nb\nc\n');
+    assert.equal(sameMixed.stats.lineEndingRows, 0);
+    const mixed = diff.computeDiffModel('a\r\nb\nc\r\nd', 'a\r\nb\r\nc\nd');
+    assert.equal(rowSummary(mixed), 'match match match match');
+    assert.equal(mixed.stats.lineEndingRows, 2);
+});
+
+test('a carriage return that is not part of a line ending stays content', function () {
+    const inside = diff.computeDiffModel('a\rb\nc', 'ab\nc');
+    assert.equal(rowSummary(inside), 'modified match');
+    assert.deepEqual(Array.from(inside.changeBounds), [1, 2]);
+    assert.equal(inside.stats.lineEndingRows, 0);
+
+    // The last line has no line feed after it, so its carriage return is text.
+    const atEnd = diff.computeDiffModel('a\nc\r', 'a\nc');
+    assert.equal(rowSummary(atEnd), 'match modified');
+    assert.deepEqual(Array.from(atEnd.changeBounds), [1, 2]);
+
+    // Only the one before the line feed is the line ending.
+    const doubled = diff.computeDiffModel('a\r\r\nb', 'a\nb');
+    assert.equal(rowSummary(doubled), 'modified match');
+    assert.deepEqual(Array.from(doubled.changeBounds), [1, 2]);
+    assert.equal(doubled.stats.lineEndingRows, 1);
+});
+
+test('ignoreWhitespace sets aside indentation, trailing blanks and the length of inner runs', function () {
+    const left = '  foo(a,  b);\n\tbar\nbaz';
+    const right = 'foo(a, b);  \n    bar\nbaz';
+
+    const strict = diff.computeDiffModel(left, right);
+    assert.equal(strict.stats.matchedRows, 1);
+    assert.equal(strict.mismatchCount > 0, true);
+    assert.equal(strict.stats.whitespaceRows, 0);
+
+    const relaxed = diff.computeDiffModel(left, right, { ignoreWhitespace: true });
+    assert.equal(rowSummary(relaxed), 'match match match');
+    assert.equal(relaxed.mismatchCount, 0);
+    assert.equal(relaxed.stats.whitespaceRows, 2);
+    assertCurrentModelSchema(relaxed);
+
+    // Only the real edit is marked, at offsets of the untrimmed lines.
+    const edited = diff.computeDiffModel('x = 1', '\tx  =  2  ', { ignoreWhitespace: true });
+    assert.equal(rowSummary(edited), 'modified');
+    assert.deepEqual(Array.from(edited.changeBounds), [4, 5, 7, 8]);
+    assert.equal(edited.stats.whitespaceRows, 0);
+
+    // Whitespace that separates words is not ignored altogether.
+    const joined = diff.computeDiffModel('a b', 'ab', { ignoreWhitespace: true });
+    assert.equal(rowSummary(joined), 'modified');
+    assert.deepEqual(Array.from(joined.changeBounds), [1, 2]);
+
+    // Only spaces and tabs are ignorable: other spaces remain real differences.
+    for (const other of [' ', ' ', '​', '﻿']) {
+        const model = diff.computeDiffModel('a' + other + 'b', 'a b', { ignoreWhitespace: true });
+        assert.equal(rowSummary(model), 'modified', 'U+' + other.charCodeAt(0).toString(16));
+        const indented = diff.computeDiffModel(other + 'ab', 'ab', { ignoreWhitespace: true });
+        assert.equal(rowSummary(indented), 'modified');
+    }
+});
+
+test('ignoreWhitespace lets a re-indented block match line by line', function () {
+    const lines = Array.from({ length: 400 }, function (_, index) {
+        return 'const value' + index + ' = compute(' + index + ');';
+    });
+    const indented = lines.map(function (line, index) {
+        return '    ' + (index === 200 ? line.replace('compute', 'calc') : line) + (index < 399 ? '\r' : '');
+    });
+    const model = diff.computeDiffModel(lines.join('\n'), indented.join('\n'), { ignoreWhitespace: true });
+
+    assert.equal(model.stats.matchedRows, 399);
+    assert.equal(model.stats.modifiedRows, 1);
+    assert.equal(model.stats.whitespaceRows, 399);
+    assert.equal(model.stats.lineEndingRows, 399);
+    assert.deepEqual(reconstructedFromModel(model, lines.join('\n'), indented.join('\n')), {
+        left: lines.join('\n'),
+        right: indented.join('\n')
+    });
+});
+
+function taggedRows(left, right, options) {
+    const model = diff.computeDiffModel(left, right, options);
+    const leftLines = left.split('\n');
+    const rightLines = right.split('\n');
+    assertCurrentModelSchema(model);
+    assert.deepEqual(reconstructedFromModel(model, left, right), { left: left, right: right });
+    return {
+        model: model,
+        rows: Array.from(model.rows, function (row) {
+            if (row.type === 'missing') {
+                return '-' + (Number.isInteger(row.movedTo) ? '>' + row.movedTo : '') + ' ' + leftLines[row.leftLineIndex];
+            }
+            if (row.type === 'added') {
+                return '+' + (Number.isInteger(row.movedFrom) ? '<' + row.movedFrom : '') + ' ' + rightLines[row.rightLineIndex];
+            }
+            return (row.type === 'match' ? '= ' : '~ ') + leftLines[row.leftLineIndex];
+        })
+    };
+}
+
+const ALPHA_FUNCTION = ['function alpha(items) {', '    let total = 0;', '    return total;', '}'];
+const BETA_FUNCTION = ['function beta(user) {', '    if (!user) {', '        return null;', '    }', '    return user.name;', '}'];
+const GAMMA_FUNCTION = ['function gamma() {', '    return 42;', '}'];
+
+test('two functions that swap places keep their own braces and are reported as a move', function () {
+    const left = ['// header', ''].concat(ALPHA_FUNCTION, [''], BETA_FUNCTION, [''], GAMMA_FUNCTION).join('\n');
+    const right = ['// header', ''].concat(BETA_FUNCTION, [''], ALPHA_FUNCTION, [''], GAMMA_FUNCTION).join('\n');
+    const result = taggedRows(left, right);
+
+    assert.deepEqual(result.rows, [
+        '= // header',
+        '= ',
+        '->9 function alpha(items) {',
+        '->10     let total = 0;',
+        '->11     return total;',
+        '->12 }',
+        '->13 ',
+        '= function beta(user) {',
+        '=     if (!user) {',
+        '=         return null;',
+        '=     }',
+        '=     return user.name;',
+        '= }',
+        '= ',
+        '+<2 function alpha(items) {',
+        '+<3     let total = 0;',
+        '+<4     return total;',
+        '+<5 }',
+        '+<6 ',
+        '= function gamma() {',
+        '=     return 42;',
+        '= }'
+    ]);
+    assert.equal(result.model.stats.movedRows, 5);
+    // A move is still a difference on both sides.
+    assert.equal(result.model.mismatchCount, 10);
+
+    // The same comparison the other way round mirrors it exactly.
+    const mirrored = taggedRows(right, left);
+    assert.equal(mirrored.model.stats.movedRows, 5);
+    assert.deepEqual(
+        mirrored.model.rows.filter(function (row) { return row.type === 'match'; })
+            .map(function (row) { return [row.rightLineIndex, row.leftLineIndex]; }),
+        result.model.rows.filter(function (row) { return row.type === 'match'; })
+            .map(function (row) { return [row.leftLineIndex, row.rightLineIndex]; })
+    );
+});
+
+test('moves pair each line once, both ways, and need real content', function () {
+    const model = taggedRows(
+        ALPHA_FUNCTION.concat([''], BETA_FUNCTION, [''], GAMMA_FUNCTION).join('\n'),
+        GAMMA_FUNCTION.concat([''], ALPHA_FUNCTION.map(function (line) { return line.replace('total', 'sum'); }),
+            [''], BETA_FUNCTION).join('\n')
+    ).model;
+    const to = new Map();
+    const from = new Map();
+    for (const row of model.rows) {
+        assert.equal(Object.hasOwn(row, 'movedTo') && row.type !== 'missing', false);
+        assert.equal(Object.hasOwn(row, 'movedFrom') && row.type !== 'added', false);
+        if (Number.isInteger(row.movedTo)) to.set(row.leftLineIndex, row.movedTo);
+        if (Number.isInteger(row.movedFrom)) from.set(row.rightLineIndex, row.movedFrom);
+    }
+    assert.equal(to.size, 3);
+    assert.equal(from.size, to.size);
+    assert.equal(new Set(to.values()).size, to.size);
+    for (const [leftLine, rightLine] of to) assert.equal(from.get(rightLine), leftLine);
+    assert.equal(model.stats.movedRows, 3);
+
+    // Lines without letters or digits, and blocks with too little text, are
+    // removed and added, never moved.
+    for (const [left, right] of [
+        ['{\n}\nfirst line of text\nsecond line of text\nthird line of text',
+            'first line of text\nsecond line of text\nthird line of text\n{\n}'],
+        ['a = 1\nkeep this line as it is\nkeep this one as well', 'keep this line as it is\nkeep this one as well\na = 1']
+    ]) {
+        const small = diff.computeDiffModel(left, right);
+        assert.equal(small.stats.movedRows, 0, JSON.stringify(left));
+        assert.equal(small.rows.some(function (row) {
+            return Object.hasOwn(row, 'movedTo') || Object.hasOwn(row, 'movedFrom');
+        }), false);
+    }
+
+    // One line on its own is a move only when it occurs once on each side.
+    const uniqueLine = 'const uniqueSetting = loadTheOnlySetting();';
+    const commonLine = 'background-color: var(--panel-background);';
+    function single(line, extra) {
+        return diff.computeDiffModel(
+            [line, 'first kept line', 'second kept line', 'third kept line'].concat(extra).join('\n'),
+            ['first kept line', 'second kept line', 'third kept line', line].concat(extra).join('\n')
+        ).stats.movedRows;
+    }
+    assert.equal(single(uniqueLine, []), 1);
+    assert.equal(single(commonLine, ['tail', commonLine]), 0);
+
+    // With whitespace ignored a re-indented block is still the same block.
+    const body = ['const first = loadFirstValue();', 'const second = loadSecondValue();'];
+    const anchors = ['anchorOne();', 'anchorTwo();', 'anchorThree();'];
+    const before = body.concat(anchors).join('\n');
+    const after = anchors.concat(body.map(function (line) { return '    ' + line; })).join('\n');
+    assert.equal(diff.computeDiffModel(before, after, { ignoreWhitespace: true }).stats.movedRows, 2);
+    assert.equal(diff.computeDiffModel(before, after).stats.movedRows, 0);
+});
+
+test('a moved block keeps the lines edited on the way, with their changed ranges', function () {
+    const alpha = ['function alpha() {', '    const total = computeTotal(items);', '    return formatCurrency(total, locale);', '}', ''];
+    const beta = ['function beta() {', '    const user = loadUser(session.userId);', "    logger.info('loaded user', user.name);", '    return user;', '}', ''];
+    const betaEdited = beta.slice();
+    betaEdited[2] = "    logger.debug('loaded user', user.name);";
+    const left = betaEdited.concat(alpha, ['const tail = 1;']).join('\n');
+    const right = alpha.concat(beta, ['const tail = 1;']).join('\n');
+
+    const result = taggedRows(left, right);
+    const model = result.model;
+    assert.equal(model.stats.movedRows, 6);
+    assert.equal(model.stats.movedChangedRows, 1);
+    assert.equal(model.stats.rangePairs, 2);
+    assert.equal(model.changeBounds.length, 4);
+    assert.equal(model.mismatchCount, 12);
+
+    const rows = Array.from(model.rows);
+    const removed = rows.filter(function (row) { return Object.hasOwn(row, 'leftRangeOffset'); });
+    const added = rows.filter(function (row) { return Object.hasOwn(row, 'rightRangeOffset'); });
+    assert.equal(removed.length, 1);
+    assert.equal(added.length, 1);
+    assert.equal(removed[0].type, 'missing');
+    assert.equal(added[0].type, 'added');
+    assert.equal(removed[0].movedTo, added[0].rightLineIndex);
+    assert.equal(added[0].movedFrom, removed[0].leftLineIndex);
+    const leftLine = left.split('\n')[removed[0].leftLineIndex];
+    const rightLine = right.split('\n')[added[0].rightLineIndex];
+    assert.equal(leftLine.slice(model.changeBounds[removed[0].leftRangeOffset],
+        model.changeBounds[removed[0].leftRangeOffset + 1]), 'debug');
+    assert.equal(rightLine.slice(model.changeBounds[added[0].rightRangeOffset],
+        model.changeBounds[added[0].rightRangeOffset + 1]), 'info');
+    // Lines after the edited one still belong to the move.
+    assert.equal(rows.filter(function (row) {
+        return row.type === 'missing' && Number.isInteger(row.movedTo);
+    }).length, 6);
+});
+
+test('edited lines join a move only between unchanged moved lines or at the end of a longer block', function () {
+    const anchors = ['first anchor line stays here', 'second anchor line stays here', 'third anchor line stays here'];
+    function movedStats(block, changed) {
+        return diff.computeDiffModel(block.concat(anchors).join('\n'), anchors.concat(changed).join('\n')).stats;
+    }
+    const block = [
+        'const alphaValue = loadAlphaValue(source);',
+        'const betaValue = loadBetaValue(source);',
+        'const gammaValue = loadGammaValue(source);',
+        'const deltaValue = loadDeltaValue(source);'
+    ];
+
+    // An edited line between two unchanged moved lines belongs to the move.
+    const between = movedStats(block.slice(0, 3),
+        [block[0], block[1].replace('source', 'origin'), block[2]]);
+    assert.equal(between.movedRows, 3);
+    assert.equal(between.movedChangedRows, 1);
+
+    // At an open end two unchanged lines carry one edited line, not two.
+    const tail = movedStats(block,
+        [block[0], block[1], block[2].replace('source', 'origin'), block[3].replace('source', 'origin')]);
+    assert.equal(tail.movedRows, 3);
+    assert.equal(tail.movedChangedRows, 1);
+
+    // A single unchanged line carries none: its neighbours may be similar by chance.
+    const single = movedStats(block.slice(0, 3),
+        [block[0].replace('source', 'origin'), block[1], block[2].replace('source', 'origin')]);
+    assert.equal(single.movedRows, 1);
+    assert.equal(single.movedChangedRows, 0);
+
+    // Without any unchanged line nothing is called a move.
+    const none = movedStats(block, block.map(function (line) { return line.replace('source', 'origin'); }));
+    assert.equal(none.movedRows, 0);
+    assert.equal(none.movedChangedRows, 0);
+
+    // A line that is not similar to its neighbour at the destination ends the move.
+    const unrelated = movedStats(block.slice(0, 3), [block[0], block[1], 'return somethingElseEntirely;']);
+    assert.equal(unrelated.movedRows, 2);
+    assert.equal(unrelated.movedChangedRows, 0);
+
+    // Range limits: an edited line whose detail does not fit stays a plain
+    // removed and added line.
+    const limited = diff.computeDiffModel(
+        block.slice(0, 3).concat(anchors).join('\n'),
+        anchors.concat([block[0], block[1], block[2].replace('source', 'origin')]).join('\n'),
+        { modelLimits: { maxRangePairsTotal: 0 } }
+    );
+    assert.equal(limited.stats.movedRows, 2);
+    assert.equal(limited.stats.movedChangedRows, 0);
+    assert.equal(limited.changeBounds.length, 0);
+});
+
+test('ignoreCase compares letters without their case and keeps offsets in the text as written', function () {
+    const left = 'Hello World\nSELECT name FROM users\nvalue = 1';
+    const right = 'hello world\nselect name from users\nVALUE = 2';
+
+    const strict = diff.computeDiffModel(left, right);
+    assert.equal(strict.stats.matchedRows, 0);
+    assert.equal(strict.stats.caseRows, 0);
+
+    const relaxed = diff.computeDiffModel(left, right, { ignoreCase: true });
+    assertCurrentModelSchema(relaxed);
+    assert.deepEqual(Array.from(relaxed.rows, function (row) { return row.type; }), ['match', 'match', 'modified']);
+    assert.equal(relaxed.stats.caseRows, 2);
+    assert.deepEqual(Array.from(relaxed.changeBounds), [8, 9, 8, 9]);
+
+    function only(leftLine, rightLine, options) {
+        const model = diff.computeDiffModel(leftLine, rightLine, options || { ignoreCase: true });
+        return { type: model.rows[0].type, bounds: Array.from(model.changeBounds), stats: model.stats };
+    }
+
+    // A word-final sigma folds the same way in a whole line and in one character.
+    assert.equal(only('\u039F\u0394\u039F\u03A3', '\u03BF\u03B4\u03BF\u03C3').type, 'match');
+    assert.equal(only('\u039F\u0394\u039F\u03A3', '\u03BF\u03B4\u03BF\u03C2').type, 'match');
+    assert.deepEqual(only('\u039F\u0394\u039F\u03A3 x', '\u03BF\u03B4\u03BF\u03C2 y').bounds, [5, 6, 5, 6]);
+    // Lower-casing can lengthen a character; the ranges still point into the original.
+    assert.deepEqual(only('\u0130STANBUL foo', '\u0130stanbul bar').bounds, [9, 12, 9, 12]);
+    // Look-alike letters of different scripts remain a difference.
+    assert.equal(only('\u0410', 'A').type, 'modified');
+    // Numbers and identifiers still change as one piece.
+    assert.deepEqual(only('const MAX_VALUE = 15000;', 'const max_value = 30000;').bounds, [18, 23, 18, 23]);
+    // Whitespace still counts unless it is ignored too.
+    assert.deepEqual(only('Hello World', 'hello  world').bounds, [6, 7]);
+
+    // With both options a row counts for each one the other could not have covered.
+    const both = diff.computeDiffModel('Foo  bar\nBAZ\nq  x\nsame', 'foo bar\nbaz\nq x\nsame',
+        { ignoreCase: true, ignoreWhitespace: true });
+    assert.equal(both.mismatchCount, 0);
+    assert.equal(both.stats.caseRows, 2);
+    assert.equal(both.stats.whitespaceRows, 2);
+    const caseOnly = diff.computeDiffModel('Foo  bar\nBAZ\nq  x\nsame', 'foo bar\nbaz\nq x\nsame',
+        { ignoreCase: true });
+    assert.equal(caseOnly.mismatchCount, 2);
+    assert.equal(caseOnly.stats.caseRows, 1);
+    assert.equal(caseOnly.stats.whitespaceRows, 0);
+
+    // A block that moved and changed case is the same block.
+    const body = ['const first = loadFirstValue();', 'const second = loadSecondValue();'];
+    const anchors = ['anchorOne();', 'anchorTwo();', 'anchorThree();'];
+    const moved = diff.computeDiffModel(body.concat(anchors).join('\n'),
+        anchors.concat(body.map(function (line) { return line.toUpperCase(); })).join('\n'),
+        { ignoreCase: true });
+    assert.equal(moved.stats.movedRows, 2);
+    assert.equal(moved.stats.movedChangedRows, 0);
+});
+
+test('a block of added or removed lines settles where it cuts the text least', function () {
+    // A list item is added whole, not as the tail of one item and the head of the next.
+    const list = ['items = [', '    {', '        id: 1,', '    },', '    {', '        id: 3,', '    },', ']'];
+    const longer = list.slice(0, 4).concat(['    {', '        id: 2,', '    },'], list.slice(4));
+    assert.deepEqual(taggedRows(list.join('\n'), longer.join('\n')).rows.filter(function (row) {
+        return row[0] !== '=';
+    }), ['+     {', '+         id: 2,', '+     },']);
+    assert.deepEqual(taggedRows(longer.join('\n'), list.join('\n')).rows.filter(function (row) {
+        return row[0] !== '=';
+    }), ['-     {', '-         id: 2,', '-     },']);
+
+    // A function goes with the blank line after it; at the end of the text
+    // with the one before it.
+    const inserted = taggedRows(
+        ALPHA_FUNCTION.concat([''], GAMMA_FUNCTION).join('\n'),
+        ALPHA_FUNCTION.concat([''], BETA_FUNCTION, [''], GAMMA_FUNCTION).join('\n')
+    ).rows.filter(function (row) { return row[0] !== '='; });
+    assert.equal(inserted[0], '+ function beta(user) {');
+    assert.equal(inserted[inserted.length - 1], '+ ');
+    const appended = taggedRows(
+        ALPHA_FUNCTION.join('\n'),
+        ALPHA_FUNCTION.concat([''], GAMMA_FUNCTION).join('\n')
+    ).rows.filter(function (row) { return row[0] !== '='; });
+    assert.deepEqual(appended, ['+ ', '+ function gamma() {', '+     return 42;', '+ }']);
+
+    // In a text that ends with a line break the empty last line stays matched:
+    // marking it would look like a change in the final line break.
+    const withNewline = taggedRows(
+        ALPHA_FUNCTION.join('\n') + '\n',
+        ALPHA_FUNCTION.concat([''], GAMMA_FUNCTION).join('\n') + '\n'
+    );
+    assert.deepEqual(withNewline.rows.filter(function (row) { return row[0] !== '='; }),
+        ['+ ', '+ function gamma() {', '+     return 42;', '+ }']);
+    assert.equal(withNewline.model.rows.at(-1).type, 'match');
+    const removedTail = taggedRows(
+        ALPHA_FUNCTION.concat([''], GAMMA_FUNCTION).join('\n') + '\n',
+        ALPHA_FUNCTION.join('\n') + '\n'
+    );
+    assert.deepEqual(removedTail.rows.filter(function (row) { return row[0] !== '='; }),
+        ['- ', '- function gamma() {', '-     return 42;', '- }']);
+    assert.equal(removedTail.model.rows.at(-1).type, 'match');
+
+    // Sliding to the very start or end of the text keeps every line accounted for.
+    for (const [left, right] of [
+        ['x\nalpha line\nbeta line\nx', 'x'],
+        ['x', 'x\nalpha line\nbeta line\nx'],
+        ['}\n\nfoo\n}', '}'],
+        ['a\nx\nx\nx\nb', 'a\nx\nb']
+    ]) {
+        const model = taggedRows(left, right).model;
+        assert.equal(model.stats.matchedRows, Math.min(left.split('\n').length, right.split('\n').length));
+    }
+});
+
+test('decimals and version numbers are compared as one piece', function () {
+    function bounds(left, right) {
+        return Array.from(diff.computeDiffModel(left, right).changeBounds);
+    }
+    // "1.2.3" -> "2.3.4" is one replacement, not a shifted pair of fragments.
+    assert.deepEqual(bounds('version = "1.2.3"', 'version = "2.3.4"'), [11, 16, 11, 16]);
+    // A change in one component marks only that component.
+    assert.deepEqual(bounds('version = "1.2.3"', 'version = "1.2.4"'), [15, 16, 15, 16]);
+    assert.deepEqual(bounds('pi = 3.14', 'pi = 3.15'), [7, 9, 7, 9]);
+    // A dot that ends a sentence or separates names is not part of a number.
+    assert.deepEqual(bounds('end of 2024. Next', 'end of 2025. Next'), [7, 11, 7, 11]);
+    assert.deepEqual(bounds('a.b.c = 1', 'a.b.d = 1'), [4, 5, 4, 5]);
+});
+
+test('Unicode normalization differences pair lines and are counted, compatibility forms are not', function () {
+    const composed = 'Tiếng Việt rất đẹp';
+    const decomposed = composed.normalize('NFD');
+    const model = diff.computeDiffModel('first\n' + composed + '\nÅ', 'first\n' + decomposed + '\nÅ');
+    assert.deepEqual(Array.from(model.rows, function (row) { return row.type; }), ['match', 'modified', 'modified']);
+    assert.equal(model.stats.normalizationRows, 2);
+    assert.equal(model.mismatchCount, 2);
+
+    const flags = diff.findCanonicallyEquivalentRanges(
+        'x é y', [2, 3], 0, 1,
+        'x é y', [2, 4], 0, 1
+    );
+    assert.deepEqual([Array.from(flags.left), Array.from(flags.right)], [[1], [1]]);
+    // Identical text, plain ASCII, and compatibility (NFKC) forms do not qualify.
+    assert.equal(diff.findCanonicallyEquivalentRanges('é', [0, 1], 0, 1, 'é', [0, 1], 0, 1), null);
+    assert.equal(diff.findCanonicallyEquivalentRanges('ab', [0, 2], 0, 1, 'cd', [0, 2], 0, 1), null);
+    assert.equal(diff.findCanonicallyEquivalentRanges('ﬁ', [0, 1], 0, 1, 'fi', [0, 2], 0, 1), null);
+    assert.equal(diff.computeDiffModel('ofﬁce hours', 'office hours').stats.normalizationRows, 0);
+});
+

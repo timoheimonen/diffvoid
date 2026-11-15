@@ -5,6 +5,45 @@ All notable changes to diffvoid.com are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-15
+
+### Added
+
+- Moved lines: removed lines that reappear among the added lines are shown in
+  their own colour with the line number of their counterpart. Lines of a moved
+  block that were also edited stay part of the move, with the edits marked.
+- **Ignore whitespace** toggle: sets aside indentation, trailing spaces and
+  tabs, and the amount of spacing between words. Off on every visit.
+- **Ignore case** toggle: treats upper and lower case letters as the same. Off
+  on every visit.
+- Hint for text that differs only in Unicode normalization (NFC/NFD).
+- A notice next to the counter for moved lines, normalization-only rows and
+  ignored differences (line endings, whitespace, case).
+- Markers for a changed tab and for a carriage return that is not part of a
+  line ending.
+
+### Changed
+
+- CRLF and LF texts match line by line instead of every row being marked as
+  changed.
+- Texts that differ on most lines are compared instead of being rejected as
+  "too different". Heavily reordered text gets a valid diff that may not be
+  the shortest one.
+- More changed lines are paired as one modified row: long lines changed at
+  both ends, and lines extended with a comment or extra arguments.
+- Added and removed blocks settle on natural boundaries, so a new, removed or
+  swapped function keeps its own closing brace.
+- Character highlights follow word boundaries: a changed number, version
+  number or identifier is highlighted as one piece instead of scattered
+  letters.
+- The header wraps its status and copy controls when they do not fit, and
+  gives them a row of their own on narrow screens.
+
+### Fixed
+
+- Large blocks of short changed lines no longer hit the comparison time limit.
+- Memory use stays bounded when one changed block spans two maximum-size texts.
+
 ## [2.1.0] - 2026-09-27
 
 ### Added

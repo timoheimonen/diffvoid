@@ -29,7 +29,7 @@
       <p class="lead"><strong>diffvoid.com</strong> is a secure, private, browser-based text comparison tool. All
         processing happens locally in your browser—your text never leaves your device.</p>
       <a class="cta" href="https://diffvoid.com/">Compare texts <span aria-hidden="true">→</span></a>
-      <div class="meta">Version 2.1.0</div>
+      <div class="meta">Version 2.2.0</div>
     </header>
 
     <section aria-labelledby="how">
@@ -110,8 +110,19 @@
         <li><strong>Bounded row alignment</strong><span>Unmatched hunks use deterministic full or banded dynamic
             programming to pair similar modified lines. If reliable pairing exceeds the shared work budget, the lines
             are conservatively shown as missing and added.</span></li>
-        <li><strong>Character-level diff</strong><span>Selected modified pairs are compared by grapheme and stored as
-            compact UTF-16 change ranges instead of permanent per-character objects.</span></li>
+        <li><strong>Character-level diff</strong><span>Selected modified pairs are compared word by word, so a changed number or identifier is highlighted as one
+            piece, and stored as compact UTF-16 change ranges instead of permanent per-character objects.</span></li>
+        <li><strong>Moved lines</strong><span>Lines that were removed in one place and added unchanged in another are
+            shown as moved, with the line number of their counterpart. Lines of a moved block that were also edited
+            stay part of the move, with their changes marked in red. Added and removed blocks are placed on natural
+            boundaries, so a moved or new function keeps its own braces.</span></li>
+        <li><strong>Unicode normalization hint</strong><span>Text that is the same characters in a different
+            normalization form (NFC/NFD) is underlined and explained instead of looking like an unexplained change.</span></li>
+        <li><strong>Line endings and whitespace</strong><span>CRLF and LF texts match line by line, and the number of
+            rows whose line endings differ is reported once. The optional ignore whitespace toggle sets aside
+            indentation, trailing spaces and tabs, and the amount of spacing between words.</span></li>
+        <li><strong>Letter case</strong><span>The optional ignore case toggle treats upper and lower case letters as
+            the same and reports how many rows differ only in case.</span></li>
         <li><strong>Invisible character detection</strong><span>Highlights zero-width spaces, non-breaking spaces, and
             other hidden Unicode characters that can cause subtle bugs.</span></li>
         <li><strong>Confusable character detection</strong><span>Marks common Greek and Cyrillic homographs that look
@@ -174,7 +185,7 @@
         selects similar modified-line pairs with deterministic tie-breaking. It uses a full matrix for small hunks and
         a banded matrix for larger ones. If the remaining budget cannot support reliable alignment, no pair is guessed:
         the hunk is shown as missing and added lines.</p>
-      <p>Only the final modified pairs receive a grapheme-aware character comparison. The result is an atomic,
+      <p>Only the final modified pairs receive a grapheme-aware, word-level character comparison. The result is an atomic,
         source-free compact model containing row indexes, line-start arrays, and UTF-16 change ranges. The original
         left and right texts remain the only source of truth in the page.</p>
       <p>The result view has fixed-height, non-wrapping rows and creates DOM only for the visible window: at most 200

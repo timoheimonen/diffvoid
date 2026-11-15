@@ -200,3 +200,36 @@ test('worker internal deadline produces a terminal tagged error without a result
     assert.equal(output.transferObservation, null);
     assertTagged(output.messages, request.jobId, request.inputRevision);
 });
+
+test('actual worker applies ignoreWhitespace and reports line-ending and whitespace rows', async function () {
+    const base = { left: 'alpha\r\n  beta\r\ngamma', right: 'alpha\n\tbeta\ngamma' };
+
+    const strict = terminalMessages(await runWorkerRequest(validRequest(base)))[0];
+    assert.equal(strict.type, 'diff:result');
+    assert.equal(strict.model.mismatchCount, 1);
+    assert.equal(strict.model.stats.lineEndingRows, 2);
+    assert.equal(strict.model.stats.whitespaceRows, 0);
+
+    const relaxed = terminalMessages(await runWorkerRequest(
+        validRequest(Object.assign({ ignoreWhitespace: true }, base))
+    ))[0];
+    assert.equal(relaxed.type, 'diff:result');
+    assert.equal(relaxed.model.mismatchCount, 0);
+    assert.equal(relaxed.model.stats.lineEndingRows, 2);
+    assert.equal(relaxed.model.stats.whitespaceRows, 1);
+});
+
+test('actual worker applies ignoreCase and reports the rows it set aside', async function () {
+    const base = { left: 'Alpha\nBETA\ngamma rays = 1', right: 'alpha\nbeta\ngamma rays = 2' };
+
+    const strict = terminalMessages(await runWorkerRequest(validRequest(base)))[0];
+    assert.equal(strict.model.stats.matchedRows, 0);
+    assert.equal(strict.model.stats.caseRows, 0);
+
+    const relaxed = terminalMessages(await runWorkerRequest(
+        validRequest(Object.assign({ ignoreCase: true }, base))
+    ))[0];
+    assert.equal(relaxed.type, 'diff:result');
+    assert.equal(relaxed.model.mismatchCount, 1);
+    assert.equal(relaxed.model.stats.caseRows, 2);
+});
