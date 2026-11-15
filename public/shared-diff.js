@@ -3220,7 +3220,204 @@ function computeDiffModel(left, right, options) {
     };
 }
 
+const UNIFIED_DIFF_CONTEXT_LINES = 3;
+const UNIFIED_DIFF_NO_NEWLINE = '\\ No newline at end of file\n';
+
+// The entry after the last line feed is a line only when text follows it.
+function unifiedDiffLineCount(text, lineStarts) {
+    const endsWithLineFeed = !text.length || text.charCodeAt(text.length - 1) === 0x000A;
+    return endsWithLineFeed ? lineStarts.length - 1 : lineStarts.length;
+}
+
+function unifiedDiffLineEnd(text, lineStarts, lineIndex) {
+    return lineIndex + 1 < lineStarts.length ? lineStarts[lineIndex + 1] - 1 : text.length;
+}
+
+function appendUnifiedDiffLines(parts, prefix, text, lineStarts, first, last) {
+    for (let lineIndex = first; lineIndex < last; lineIndex++) {
+        parts.push(prefix, text.slice(lineStarts[lineIndex], unifiedDiffLineEnd(text, lineStarts, lineIndex)), '\n');
+        if (lineIndex + 1 >= lineStarts.length) parts.push(UNIFIED_DIFF_NO_NEWLINE);
+    }
+}
+
+function unifiedDiffFileName(name, fallback) {
+    const value = typeof name === 'string' ? name.replace(/[\u0000-\u001F\u007F]/g, '_').trim() : '';
+    return value || fallback;
+}
+
+function unifiedDiffRange(start, length) {
+    return (length ? start + 1 : start) + ',' + length;
+}
+
+// A unified diff of the two original texts, taken from the rows of a model.
+// It describes the exact texts: rows that an ignore option or the line-ending
+// rule shows as matching are still changes here, so applying the result to the
+// left text always gives the right text.
+function createUnifiedDiff(left, right, model, options) {
+    if (typeof left !== 'string' || typeof right !== 'string' || !model || model.version !== 2
+        || !Array.isArray(model.rows) || !model.leftLineStarts || !model.rightLineStarts) {
+        throw new TypeError('A unified diff requires both texts and their DiffModelV2 result.');
+    }
+    const leftStarts = model.leftLineStarts;
+    const rightStarts = model.rightLineStarts;
+    const leftCount = unifiedDiffLineCount(left, leftStarts);
+    const rightCount = unifiedDiffLineCount(right, rightStarts);
+    const requestedContext = options && options.contextLines;
+    const context = Number.isInteger(requestedContext) && requestedContext >= 0
+        ? requestedContext : UNIFIED_DIFF_CONTEXT_LINES;
+
+    // Changes as [leftStart, leftEnd, rightStart, rightEnd) line ranges.
+    const changes = [];
+    let leftPosition = 0;
+    let rightPosition = 0;
+    let open = false;
+    const rows = model.rows;
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const hasLeft = Number.isInteger(row.leftLineIndex) && row.leftLineIndex < leftCount;
+        const hasRight = Number.isInteger(row.rightLineIndex) && row.rightLineIndex < rightCount;
+        if (!hasLeft && !hasRight) continue;
+        let equal = false;
+        if (row.type === 'match' && hasLeft && hasRight) {
+            const leftStart = leftStarts[leftPosition];
+            const rightStart = rightStarts[rightPosition];
+            const leftEnd = unifiedDiffLineEnd(left, leftStarts, leftPosition);
+            const rightEnd = unifiedDiffLineEnd(right, rightStarts, rightPosition);
+            equal = leftEnd - leftStart === rightEnd - rightStart
+                && (leftPosition + 1 < leftStarts.length) === (rightPosition + 1 < rightStarts.length)
+                && left.slice(leftStart, leftEnd) === right.slice(rightStart, rightEnd);
+        }
+        if (equal) {
+            open = false;
+            leftPosition++;
+            rightPosition++;
+            continue;
+        }
+        if (!open) {
+            changes.push(leftPosition, leftPosition, rightPosition, rightPosition);
+            open = true;
+        }
+        if (hasLeft) changes[changes.length - 3] = ++leftPosition;
+        if (hasRight) changes[changes.length - 1] = ++rightPosition;
+    }
+    if (!changes.length) return '';
+
+    const parts = [
+        '--- ', unifiedDiffFileName(options && options.leftName, 'left'), '\n',
+        '+++ ', unifiedDiffFileName(options && options.rightName, 'right'), '\n'
+    ];
+    let index = 0;
+    while (index < changes.length) {
+        let last = index;
+        while (last + 4 < changes.length && changes[last + 4] - changes[last + 1] <= context * 2) last += 4;
+        const lead = Math.min(context, changes[index]);
+        const trail = Math.min(context, leftCount - changes[last + 1]);
+        const leftFirst = changes[index] - lead;
+        const rightFirst = changes[index + 2] - lead;
+        const leftLength = changes[last + 1] + trail - leftFirst;
+        const rightLength = changes[last + 3] + trail - rightFirst;
+        parts.push('@@ -', unifiedDiffRange(leftFirst, leftLength),
+            ' +', unifiedDiffRange(rightFirst, rightLength), ' @@\n');
+        let leftLine = leftFirst;
+        for (let change = index; change <= last; change += 4) {
+            appendUnifiedDiffLines(parts, ' ', left, leftStarts, leftLine, changes[change]);
+            appendUnifiedDiffLines(parts, '-', left, leftStarts, changes[change], changes[change + 1]);
+            appendUnifiedDiffLines(parts, '+', right, rightStarts, changes[change + 2], changes[change + 3]);
+            leftLine = changes[change + 1];
+        }
+        appendUnifiedDiffLines(parts, ' ', left, leftStarts, leftLine, leftLine + trail);
+        index = last + 4;
+    }
+    return parts.join('');
+}
+
+// The line range a run of rows covers on one side. A side without lines in
+// the run answers with the empty range where its lines would go.
+function diffRowsLineRange(rows, firstRow, lastRow, key) {
+    let start = -1;
+    let end = -1;
+    for (let i = firstRow; i < lastRow; i++) {
+        const lineIndex = rows[i][key];
+        if (!Number.isInteger(lineIndex)) continue;
+        if (start < 0) start = lineIndex;
+        end = lineIndex + 1;
+    }
+    if (start >= 0) return { start: start, end: end };
+    for (let i = firstRow - 1; i >= 0; i--) {
+        const lineIndex = rows[i][key];
+        if (Number.isInteger(lineIndex)) return { start: lineIndex + 1, end: lineIndex + 1 };
+    }
+    return { start: 0, end: 0 };
+}
+
+// Makes one side agree with the other over a run of rows: returns the new
+// text of the other side, in which the lines of the run are replaced with the
+// lines the run has on fromSide. Lines keep their own line endings.
+function mergeDiffRows(left, right, model, firstRow, lastRow, fromSide) {
+    if (typeof left !== 'string' || typeof right !== 'string' || !model || !Array.isArray(model.rows)
+        || (fromSide !== 'left' && fromSide !== 'right')) {
+        throw new TypeError('Merging rows requires both texts, their model and a source side.');
+    }
+    const rows = model.rows;
+    if (!Number.isInteger(firstRow) || !Number.isInteger(lastRow)
+        || firstRow < 0 || lastRow > rows.length || firstRow >= lastRow) {
+        throw new RangeError('Merging rows requires a row range inside the model.');
+    }
+    const fromLeft = fromSide === 'left';
+    const sourceRange = diffRowsLineRange(rows, firstRow, lastRow, fromLeft ? 'leftLineIndex' : 'rightLineIndex');
+    const targetRange = diffRowsLineRange(rows, firstRow, lastRow, fromLeft ? 'rightLineIndex' : 'leftLineIndex');
+    const sourceLines = (fromLeft ? left : right).split('\n');
+    const targetLines = (fromLeft ? right : left).split('\n');
+    return targetLines.slice(0, targetRange.start)
+        .concat(sourceLines.slice(sourceRange.start, sourceRange.end), targetLines.slice(targetRange.end))
+        .join('\n');
+}
+
+// Four UTF-8 bytes per character at most; a larger file cannot fit the limit.
+const TEXT_FILE_MAX_BYTES = DIFF_LIMITS.maxChars * 4;
+
+// Decodes the bytes of a local file into text. UTF-8 keeps a byte order mark
+// as a character, because it is one of the hidden characters the comparison
+// shows. UTF-16 is recognised by its byte order mark, and bytes that are not
+// valid UTF-8 are read as Windows-1252.
+function decodeTextBytes(bytes) {
+    if (!ArrayBuffer.isView(bytes) || bytes.BYTES_PER_ELEMENT !== 1) {
+        throw new TypeError('decodeTextBytes requires a Uint8Array.');
+    }
+    if (bytes.length > TEXT_FILE_MAX_BYTES) {
+        return {
+            ok: false,
+            message: 'File too large. Maximum ' + DIFF_LIMITS.maxChars.toLocaleString() + ' characters per side supported.'
+        };
+    }
+    let text;
+    let encoding = 'UTF-8';
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+        encoding = 'UTF-16LE';
+        text = new TextDecoder('utf-16le').decode(bytes);
+    } else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+        encoding = 'UTF-16BE';
+        text = new TextDecoder('utf-16be').decode(bytes);
+    } else {
+        try {
+            text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+        } catch (err) {
+            if (bytes.indexOf(0) !== -1) return { ok: false, message: 'This looks like a binary file, not text.' };
+            encoding = 'Windows-1252';
+            text = new TextDecoder('windows-1252').decode(bytes);
+        }
+    }
+    if (text.indexOf('\u0000') !== -1) {
+        return { ok: false, message: 'This looks like a binary file, not text.' };
+    }
+    return { ok: true, text: text, encoding: encoding };
+}
+
 root.DiffCore = Object.freeze({
+    maxFileBytes: TEXT_FILE_MAX_BYTES,
+    createUnifiedDiff: createUnifiedDiff,
+    decodeTextBytes: decodeTextBytes,
+    mergeDiffRows: mergeDiffRows,
     hasInvisibleCharacters: hasInvisibleCharacters,
     stripInvisibleCharacters: stripInvisibleCharacters,
     createDiffWorkBudget: createDiffWorkBudget,

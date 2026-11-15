@@ -18,6 +18,13 @@ const RENDER_BUDGETS = Object.freeze({
 const VIRTUAL_DIFF_ROW_HEIGHT = 21;
 const VIRTUAL_DIFF_PREVIEW_CONTEXT = 256;
 const VIRTUAL_DIFF_RENDER_CHUNK_UNITS = 32;
+// Unchanged rows kept around a change when only changes are shown, and the
+// shortest run worth replacing with a one-row fold.
+const VIRTUAL_DIFF_CONTEXT_ROWS = 3;
+const VIRTUAL_DIFF_MIN_FOLD_ROWS = 4;
+const VIRTUAL_CHANGE_LEFT = 1;
+const VIRTUAL_CHANGE_RIGHT = 2;
+const VIRTUAL_CHANGE_MOVED = 4;
 
 const VIRTUAL_EQUIVALENT_TITLE = 'Same characters in a different Unicode normalization form (NFC/NFD)';
 
@@ -222,6 +229,8 @@ function createVirtualDiffView(options) {
         ? settings.findEquivalentRanges : null;
     const onRenderingReduced = typeof settings.onRenderingReduced === 'function'
         ? settings.onRenderingReduced : function () {};
+    const onViewChange = typeof settings.onViewChange === 'function'
+        ? settings.onViewChange : function () {};
     const estimatedCharacterWidth = Math.max(1, Number(settings.estimatedCharacterWidth) || 8);
     const paneElements = { left: leftElement, right: rightElement };
     const originalAttributes = {
@@ -247,6 +256,28 @@ function createVirtualDiffView(options) {
     let pointerSelection = null;
     let latestPointerEvent = null;
     let pendingPreviewFocus = null;
+    // A change is a run of consecutive rows that are not matches. The index is
+    // built once per result, in model row indices.
+    let changeStarts = new Int32Array(0);
+    let changeEnds = new Int32Array(0);
+    let changeFlags = new Uint8Array(0);
+    let currentChange = -1;
+    // Showing only changes survives a new result; which folds are open does not.
+    let collapsed = false;
+    let folds = [];
+    // Display rows are what the panes scroll through. Without folds they are
+    // the model rows themselves and both maps stay null.
+    let displayRows = null;
+    let rowToDisplay = null;
+    // The unified view shows both texts in the left pane: unchanged lines
+    // once, and for every change its left lines followed by its right lines.
+    // A display row then also has a side, and a row that has a line on each
+    // side has two positions. Like the folds, the setting survives a new result.
+    let unified = false;
+    let displaySides = null;
+    let rowToDisplayRight = null;
+    let changeDisplayStarts = null;
+    let changeDisplayEnds = null;
 
     function capturePaneAttributes(element) {
         const names = ['contenteditable', 'role', 'aria-readonly', 'tabindex', 'aria-label', 'aria-multiline'];
@@ -319,11 +350,37 @@ function createVirtualDiffView(options) {
         return { root: root, before: before, window: windowElement, after: after };
     }
 
+    // Only a result is laid out as one pane; the inputs always show both.
+    function applyLayout() {
+        const active = unified && !!model;
+        leftElement.classList.toggle('diff-unified', active);
+        rightElement.classList.toggle('diff-unified-hidden', active);
+        if (paneStructures) {
+            paneStructures.left.window.setAttribute('aria-label', unified ? 'Unified diff rows' : 'Left diff rows');
+        }
+    }
+
     function activateStructures() {
         paneStructures = {
             left: createPaneStructure('left'),
             right: createPaneStructure('right')
         };
+        applyLayout();
+    }
+
+    // The pane that shows the lines of a side.
+    function paneFor(side) {
+        return unified ? leftElement : paneElements[side];
+    }
+
+    // In the unified view the pane belongs to both texts. Unchanged lines, and
+    // the keyboard, follow the text the selection is in.
+    function unifiedSide() {
+        return selection ? selection.side : 'left';
+    }
+
+    function sideForPane(paneSide) {
+        return unified ? unifiedSide() : paneSide;
     }
 
     function validateModel(nextModel) {
@@ -353,6 +410,393 @@ function createVirtualDiffView(options) {
             if (rightIndex !== null && rightIndex < maps.right.length) maps.right[rightIndex] = rowIndex;
         }
         rowByLine = maps;
+    }
+
+    function isMovedRow(row) {
+        if (row.type === 'missing') return Number.isInteger(row.movedTo);
+        if (row.type === 'added') return Number.isInteger(row.movedFrom);
+        return false;
+    }
+
+    function buildChangeIndex() {
+        const rows = model.rows;
+        const starts = [];
+        const ends = [];
+        const flags = [];
+        let index = 0;
+        while (index < rows.length) {
+            if (rows[index].type === 'match') {
+                index++;
+                continue;
+            }
+            const start = index;
+            let flag = VIRTUAL_CHANGE_MOVED;
+            while (index < rows.length && rows[index].type !== 'match') {
+                const row = rows[index];
+                if (row.type !== 'added') flag |= VIRTUAL_CHANGE_LEFT;
+                if (row.type !== 'missing') flag |= VIRTUAL_CHANGE_RIGHT;
+                if (!isMovedRow(row)) flag &= ~VIRTUAL_CHANGE_MOVED;
+                index++;
+            }
+            starts.push(start);
+            ends.push(index);
+            flags.push(flag);
+        }
+        changeStarts = Int32Array.from(starts);
+        changeEnds = Int32Array.from(ends);
+        changeFlags = Uint8Array.from(flags);
+        currentChange = -1;
+    }
+
+    // Unchanged runs between changes, less the context kept next to each change.
+    function computeFolds() {
+        const next = [];
+        if (!collapsed || !model) return next;
+        const rowCount = model.rows.length;
+        const count = changeStarts.length;
+        for (let i = 0; i <= count; i++) {
+            const runStart = i === 0 ? 0 : changeEnds[i - 1];
+            const runEnd = i === count ? rowCount : changeStarts[i];
+            const first = i === 0 ? runStart : runStart + VIRTUAL_DIFF_CONTEXT_ROWS;
+            const last = i === count ? runEnd : runEnd - VIRTUAL_DIFF_CONTEXT_ROWS;
+            if (last - first >= VIRTUAL_DIFF_MIN_FOLD_ROWS) {
+                next.push({ first: first, last: last, expanded: false });
+            }
+        }
+        return next;
+    }
+
+    function buildUnifiedDisplay() {
+        const rows = model.rows;
+        const rowCount = rows.length;
+        let total = rowCount;
+        for (let i = 0; i < rowCount; i++) {
+            if (rows[i].type === 'modified') total++;
+        }
+        for (const fold of folds) {
+            if (!fold.expanded) total -= fold.last - fold.first - 1;
+        }
+        const display = new Int32Array(total);
+        const sides = new Uint8Array(total);
+        const first = new Int32Array(rowCount);
+        const right = new Int32Array(rowCount);
+        const starts = new Int32Array(changeStarts.length);
+        const ends = new Int32Array(changeStarts.length);
+        let position = 0;
+        let row = 0;
+        let foldIndex = 0;
+        let change = 0;
+        while (row < rowCount) {
+            while (foldIndex < folds.length && (folds[foldIndex].expanded || folds[foldIndex].last <= row)) foldIndex++;
+            if (foldIndex < folds.length && row === folds[foldIndex].first) {
+                while (row < folds[foldIndex].last) {
+                    first[row] = position;
+                    right[row++] = position;
+                }
+                display[position++] = -(foldIndex + 1);
+                continue;
+            }
+            if (change < changeStarts.length && row === changeStarts[change]) {
+                const end = changeEnds[change];
+                starts[change] = position;
+                for (let i = row; i < end; i++) {
+                    if (rows[i].type === 'added') continue;
+                    first[i] = position;
+                    right[i] = position;
+                    display[position++] = i;
+                }
+                for (let i = row; i < end; i++) {
+                    if (rows[i].type === 'missing') continue;
+                    if (rows[i].type === 'added') first[i] = position;
+                    right[i] = position;
+                    sides[position] = 1;
+                    display[position++] = i;
+                }
+                ends[change++] = position;
+                row = end;
+                continue;
+            }
+            first[row] = position;
+            right[row] = position;
+            display[position++] = row++;
+        }
+        displayRows = display;
+        displaySides = sides;
+        rowToDisplay = first;
+        rowToDisplayRight = right;
+        changeDisplayStarts = starts;
+        changeDisplayEnds = ends;
+    }
+
+    function applyFolds() {
+        displaySides = null;
+        rowToDisplayRight = null;
+        changeDisplayStarts = null;
+        changeDisplayEnds = null;
+        if (unified) {
+            buildUnifiedDisplay();
+            return;
+        }
+        let hidden = 0;
+        let active = 0;
+        for (const fold of folds) {
+            if (fold.expanded) continue;
+            hidden += fold.last - fold.first;
+            active++;
+        }
+        if (!active) {
+            displayRows = null;
+            rowToDisplay = null;
+            return;
+        }
+        const rowCount = model.rows.length;
+        const display = new Int32Array(rowCount - hidden + active);
+        const reverse = new Int32Array(rowCount);
+        let row = 0;
+        let position = 0;
+        for (let foldIndex = 0; foldIndex < folds.length; foldIndex++) {
+            const fold = folds[foldIndex];
+            if (fold.expanded) continue;
+            while (row < fold.first) {
+                reverse[row] = position;
+                display[position++] = row++;
+            }
+            // A fold is one display row, stored as a negative fold number.
+            while (row < fold.last) reverse[row++] = position;
+            display[position++] = -(foldIndex + 1);
+        }
+        while (row < rowCount) {
+            reverse[row] = position;
+            display[position++] = row++;
+        }
+        displayRows = display;
+        rowToDisplay = reverse;
+    }
+
+    function displayCount() {
+        return displayRows ? displayRows.length : model.rows.length;
+    }
+
+    // The model row at a display position, or a negative fold number.
+    function displayEntry(displayIndex) {
+        return displayRows ? displayRows[displayIndex] : displayIndex;
+    }
+
+    function foldAtEntry(entry) {
+        return entry < 0 ? folds[-entry - 1] : null;
+    }
+
+    // The display position of a model row; a folded row answers with its fold.
+    function displayIndexForRow(rowIndex) {
+        return rowToDisplay ? rowToDisplay[rowIndex] : rowIndex;
+    }
+
+    // Where the line a row has on one side is shown.
+    function displayIndexForLine(rowIndex, side) {
+        if (side === 'right' && rowToDisplayRight) return rowToDisplayRight[rowIndex];
+        return displayIndexForRow(rowIndex);
+    }
+
+    function displaySideAt(displayIndex) {
+        return displaySides && displaySides[displayIndex] ? 'right' : 'left';
+    }
+
+    function changeDisplayStart(index) {
+        return changeDisplayStarts ? changeDisplayStarts[index] : displayIndexForRow(changeStarts[index]);
+    }
+
+    function changeDisplayEnd(index) {
+        return changeDisplayEnds ? changeDisplayEnds[index] : displayIndexForRow(changeEnds[index] - 1) + 1;
+    }
+
+    function modelRowAtDisplay(displayIndex) {
+        const entry = displayEntry(virtualClamp(displayIndex, 0, displayCount() - 1));
+        return entry < 0 ? foldAtEntry(entry).first : entry;
+    }
+
+    function setScrollTop(top) {
+        const value = Math.max(0, top);
+        leftElement.scrollTop = value;
+        rightElement.scrollTop = value;
+    }
+
+    // The mounted rows get their spacers only when a frame is committed. Until
+    // then the panes may be shorter than the new result, and a scroll position
+    // beyond that height would be clamped; the full height is reserved first.
+    function reserveScrollHeight() {
+        if (!paneStructures) return;
+        const fullHeight = (displayCount() * VIRTUAL_DIFF_ROW_HEIGHT) + 'px';
+        paneStructures.left.after.style.height = fullHeight;
+        paneStructures.right.after.style.height = fullHeight;
+    }
+
+    function topDisplayIndex() {
+        const top = Math.max(0, Number(leftElement.scrollTop) || Number(rightElement.scrollTop) || 0);
+        return Math.floor(top / VIRTUAL_DIFF_ROW_HEIGHT);
+    }
+
+    // Rebuilds the display rows and keeps the given model row where it was on screen.
+    function refreshDisplay(anchorRow, anchorOffset) {
+        applyFolds();
+        if (Number.isInteger(anchorRow)) {
+            reserveScrollHeight();
+            setScrollTop((displayIndexForRow(anchorRow) * VIRTUAL_DIFF_ROW_HEIGHT) + (anchorOffset || 0));
+        }
+        scheduleRender();
+        onViewChange();
+    }
+
+    function expandFold(foldIndex) {
+        const fold = folds[foldIndex];
+        if (!model || !fold || fold.expanded) return false;
+        fold.expanded = true;
+        refreshDisplay(null, 0);
+        return true;
+    }
+
+    function revealRow(rowIndex) {
+        if (!rowToDisplay) return;
+        const fold = foldAtEntry(displayRows[rowToDisplay[rowIndex]]);
+        if (!fold) return;
+        fold.expanded = true;
+        applyFolds();
+        onViewChange();
+    }
+
+    // Changes how the rows are laid out and keeps the row at the top of the
+    // viewport where it was.
+    function relayout(change) {
+        if (!model || !model.rows.length) {
+            change();
+            return;
+        }
+        const top = Math.max(0, Number(leftElement.scrollTop) || Number(rightElement.scrollTop) || 0);
+        const topIndex = virtualClamp(topDisplayIndex(), 0, displayCount() - 1);
+        const anchorRow = modelRowAtDisplay(topIndex);
+        const anchorOffset = displayEntry(topIndex) < 0 ? 0 : top - (topIndex * VIRTUAL_DIFF_ROW_HEIGHT);
+        change();
+        folds = computeFolds();
+        refreshDisplay(anchorRow, anchorOffset);
+    }
+
+    function setCollapsed(enabled) {
+        const next = !!enabled;
+        if (next !== collapsed) relayout(function () { collapsed = next; });
+        return collapsed;
+    }
+
+    function setUnified(enabled) {
+        const next = !!enabled;
+        if (next !== unified) {
+            relayout(function () {
+                unified = next;
+                applyLayout();
+            });
+        }
+        return unified;
+    }
+
+    function getChangeSummary() {
+        return { total: changeStarts.length, current: currentChange };
+    }
+
+    // The model rows of one change, as a half-open range.
+    function getChangeRows(index) {
+        if (!Number.isInteger(index) || index < 0 || index >= changeStarts.length) return null;
+        return { first: changeStarts[index], last: changeEnds[index] };
+    }
+
+    // Makes the change that contains a model row the current one, without scrolling.
+    function selectChangeAtRow(rowIndex) {
+        const index = changeIndexFrom(rowIndex + 1) - 1;
+        if (index < 0 || rowIndex >= changeEnds[index] || index === currentChange) return;
+        currentChange = index;
+        scheduleRender();
+        onViewChange();
+    }
+
+    // Where the viewport is, as a source line of one side and its distance
+    // from the top. It can be given to the next result when that side's text
+    // stays the same, so that the view does not jump.
+    function getScrollAnchor(side) {
+        if (!model || !model.rows.length || (side !== 'left' && side !== 'right')) return null;
+        const top = Math.max(0, Number(leftElement.scrollTop) || Number(rightElement.scrollTop) || 0);
+        const rowIndex = modelRowAtDisplay(topDisplayIndex());
+        let lineIndex = nearestSourceLineForRow(side, rowIndex, 1);
+        if (lineIndex === null) lineIndex = nearestSourceLineForRow(side, rowIndex, -1);
+        if (lineIndex === null) return null;
+        const anchorTop = displayIndexForLine(rowByLine[side][lineIndex], side) * VIRTUAL_DIFF_ROW_HEIGHT;
+        return { side: side, lineIndex: lineIndex, offset: top - anchorTop };
+    }
+
+    function anchorScrollTop(anchor) {
+        if (!anchor || (anchor.side !== 'left' && anchor.side !== 'right')) return 0;
+        const map = rowByLine[anchor.side];
+        if (!Number.isInteger(anchor.lineIndex) || anchor.lineIndex < 0 || anchor.lineIndex >= map.length) return 0;
+        const rowIndex = map[anchor.lineIndex];
+        if (rowIndex < 0) return 0;
+        return Math.max(0, (displayIndexForLine(rowIndex, anchor.side) * VIRTUAL_DIFF_ROW_HEIGHT)
+            + (Number.isFinite(anchor.offset) ? anchor.offset : 0));
+    }
+
+    // Change positions in display rows, for an overview of the whole result.
+    function getChangeMarks() {
+        const count = changeStarts.length;
+        const starts = new Int32Array(count);
+        const ends = new Int32Array(count);
+        for (let i = 0; i < count; i++) {
+            starts[i] = changeDisplayStart(i);
+            ends[i] = changeDisplayEnd(i);
+        }
+        return {
+            rowCount: model ? displayCount() : 0,
+            starts: starts,
+            ends: ends,
+            flags: Uint8Array.from(changeFlags)
+        };
+    }
+
+    // The first change that starts at or after a model row.
+    function changeIndexFrom(rowIndex) {
+        let low = 0;
+        let high = changeStarts.length;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (changeStarts[middle] < rowIndex) low = middle + 1;
+            else high = middle;
+        }
+        return low;
+    }
+
+    function goToChange(target) {
+        const total = changeStarts.length;
+        if (!model || !total) return getChangeSummary();
+        const viewportRows = Math.max(1, Math.floor(
+            Math.max(leftElement.clientHeight || 0, rightElement.clientHeight || 0) / VIRTUAL_DIFF_ROW_HEIGHT
+        ));
+        let next;
+        if (Number.isInteger(target)) {
+            next = virtualClamp(target, 0, total - 1);
+        } else {
+            const forward = target !== 'previous';
+            const topIndex = topDisplayIndex();
+            const currentIndex = currentChange >= 0 ? changeDisplayStart(currentChange) : -1;
+            // Step from the current change while it is still on screen; after
+            // scrolling away, start from what is visible instead.
+            if (currentIndex >= topIndex && currentIndex < topIndex + viewportRows) {
+                next = currentChange + (forward ? 1 : -1);
+            } else {
+                const topRow = modelRowAtDisplay(topIndex);
+                next = forward ? changeIndexFrom(topRow) : changeIndexFrom(topRow) - 1;
+            }
+            if (next >= total) next = 0;
+            else if (next < 0) next = total - 1;
+        }
+        currentChange = next;
+        setScrollTop((changeDisplayStart(next) - Math.floor(viewportRows / 4)) * VIRTUAL_DIFF_ROW_HEIGHT);
+        scheduleRender();
+        onViewChange();
+        return getChangeSummary();
     }
 
     function cancelScheduledRendering() {
@@ -425,8 +869,13 @@ function createVirtualDiffView(options) {
         mountedRange = { first: 0, last: 0 };
         activateStructures();
         buildRowMaps();
-        leftElement.scrollTop = 0;
-        rightElement.scrollTop = 0;
+        buildChangeIndex();
+        folds = computeFolds();
+        applyFolds();
+        const startTop = anchorScrollTop(result.anchor);
+        if (startTop > 0) reserveScrollHeight();
+        leftElement.scrollTop = startTop;
+        rightElement.scrollTop = startTop;
         leftElement.scrollLeft = 0;
         rightElement.scrollLeft = 0;
         for (const row of model.rows) {
@@ -842,20 +1291,34 @@ function createVirtualDiffView(options) {
         }
     }
 
+    // A unified row has a second gutter and its number.
     function minimumNodesForRow() {
-        return 5;
+        return unified ? 7 : 5;
     }
 
-    function* renderRow(side, row, rowIndex, context) {
+    function* renderRow(side, row, rowIndex, context, unifiedRow) {
         context.reserved = Math.max(0, context.reserved - minimumNodesForRow());
         const lineElement = addElement(null, 'div', context);
         const gutter = addElement(lineElement, 'span', context);
+        const rightGutter = unifiedRow ? addElement(lineElement, 'span', context) : null;
         const content = addElement(lineElement, 'span', context);
         lineElement.className = 'diff-line';
         lineElement.setAttribute('data-row-index', String(rowIndex));
         gutter.className = 'diff-gutter';
         gutter.setAttribute('aria-hidden', 'true');
         content.className = 'diff-content';
+        if (unifiedRow) {
+            rightGutter.className = 'diff-gutter';
+            rightGutter.setAttribute('aria-hidden', 'true');
+            lineElement.setAttribute('data-side', side);
+            if (row.type !== 'match') {
+                lineElement.classList.add(side === 'left' ? 'diff-line-removed' : 'diff-line-added');
+            }
+        }
+        if (currentChange >= 0 && rowIndex >= changeStarts[currentChange]
+            && rowIndex < changeEnds[currentChange]) {
+            lineElement.classList.add('diff-line-current');
+        }
 
         const lineIndex = sourceLineIndex(row, side);
         if (lineIndex === null) {
@@ -872,7 +1335,16 @@ function createVirtualDiffView(options) {
         lineElement.setAttribute('aria-setsize', String(lineStarts.length));
         lineElement.setAttribute('data-line-index', String(lineIndex));
         setSourceAttributes(gutter, bounds.start, bounds.start);
-        addText(gutter, String(lineIndex + 1), context);
+        if (!unifiedRow) {
+            addText(gutter, String(lineIndex + 1), context);
+        } else {
+            // Old and new line numbers: an unchanged line has both.
+            setSourceAttributes(rightGutter, bounds.start, bounds.start);
+            if (side === 'left' || row.type === 'match') addText(gutter, String(row.leftLineIndex + 1), context);
+            if (side === 'right' || row.type === 'match') {
+                addText(rightGutter, String(row.rightLineIndex + 1), context);
+            }
+        }
 
         const wholeLineMismatch = (row.type === 'missing' && side === 'left')
             || (row.type === 'added' && side === 'right');
@@ -907,8 +1379,44 @@ function createVirtualDiffView(options) {
         return lineElement;
     }
 
+    function* renderFoldRow(side, foldIndex, context) {
+        context.reserved = Math.max(0, context.reserved - minimumNodesForRow());
+        const fold = folds[foldIndex];
+        const count = fold.last - fold.first;
+        const label = count.toLocaleString('en-US') + ' unchanged line' + (count === 1 ? '' : 's');
+        const lineElement = addElement(null, 'div', context);
+        const gutter = addElement(lineElement, 'span', context);
+        const content = addElement(lineElement, 'span', context);
+        const button = addElement(content, 'button', context);
+        lineElement.className = 'diff-line diff-fold';
+        lineElement.setAttribute('role', 'listitem');
+        lineElement.setAttribute('data-fold-index', String(foldIndex));
+        gutter.className = 'diff-gutter';
+        gutter.setAttribute('aria-hidden', 'true');
+        content.className = 'diff-content';
+        button.className = 'diff-fold-button';
+        button.setAttribute('type', 'button');
+        button.setAttribute('title', 'Show these lines');
+        button.setAttribute('aria-label', 'Show ' + label);
+        addText(button, label, context);
+        button.addEventListener('click', function (event) {
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            expandFold(foldIndex);
+        });
+        return lineElement;
+    }
+
+    function renderDisplayRow(side, displayIndex, context) {
+        const entry = displayEntry(displayIndex);
+        if (entry < 0) return renderFoldRow(side, -entry - 1, context);
+        const row = model.rows[entry];
+        if (!unified) return renderRow(side, row, entry, context, false);
+        return renderRow(row.type === 'match' ? unifiedSide() : displaySideAt(displayIndex), row, entry, context, true);
+    }
+
     function createRenderTask() {
-        const rowCount = model.rows.length;
+        const rowCount = displayCount();
         const viewportHeight = Math.max(leftElement.clientHeight || 0, rightElement.clientHeight || 0);
         const top = Math.max(0, Number(leftElement.scrollTop) || Number(rightElement.scrollTop) || 0);
         const visibleRange = computeVirtualWindow(
@@ -987,11 +1495,10 @@ function createVirtualDiffView(options) {
 
     function beginCurrentRow(task) {
         const rowIndex = task.workIndices[task.workPosition];
-        const row = model.rows[rowIndex];
         task.currentRow = {
             rowIndex: rowIndex,
             side: 'left',
-            iterator: renderRow('left', row, rowIndex, task.context),
+            iterator: renderDisplayRow('left', rowIndex, task.context),
             left: null,
             right: null
         };
@@ -1005,19 +1512,18 @@ function createVirtualDiffView(options) {
 
         if (current.side === 'left') {
             current.left = result.value;
-            current.side = 'right';
-            current.iterator = renderRow(
-                'right',
-                model.rows[current.rowIndex],
-                current.rowIndex,
-                task.context
-            );
-            return false;
+            // The unified view has no right pane to fill.
+            if (!unified) {
+                current.side = 'right';
+                current.iterator = renderDisplayRow('right', current.rowIndex, task.context);
+                return false;
+            }
+        } else {
+            current.right = result.value;
         }
 
-        current.right = result.value;
         task.leftRows.set(current.rowIndex, current.left);
-        task.rightRows.set(current.rowIndex, current.right);
+        if (current.right) task.rightRows.set(current.rowIndex, current.right);
         task.firstRendered = task.firstRendered === null
             ? current.rowIndex : Math.min(task.firstRendered, current.rowIndex);
         task.lastRendered = task.lastRendered === null
@@ -1031,8 +1537,8 @@ function createVirtualDiffView(options) {
         if (!pendingPreviewFocus || !paneStructures) return;
         const pending = pendingPreviewFocus;
         pendingPreviewFocus = null;
-        const row = paneStructures[pending.side].window.querySelector(
-            '[data-row-index="' + pending.rowIndex + '"]'
+        const row = paneStructures[unified ? 'left' : pending.side].window.querySelector(
+            '[data-row-index="' + pending.rowIndex + '"]' + (unified ? '[data-side="' + pending.side + '"]' : '')
         );
         if (!row) return;
         let button = row.querySelector('[data-preview-direction="' + pending.direction + '"]');
@@ -1154,8 +1660,9 @@ function createVirtualDiffView(options) {
         return true;
     }
 
-    function handleCopy(side, event) {
+    function handleCopy(paneSide, event) {
         if (!model) return;
+        const side = sideForPane(paneSide);
         const interval = virtualSelectionInterval(selection, side);
         if (!interval || !event.clipboardData) return;
         event.clipboardData.setData('text/plain', sources[side].slice(interval.start, interval.end));
@@ -1179,8 +1686,9 @@ function createVirtualDiffView(options) {
         const lineIndex = lineIndexForOffset(side, offset);
         const rowIndex = rowByLine[side][lineIndex];
         if (rowIndex < 0) return;
-        const pane = paneElements[side];
-        const rowTop = rowIndex * VIRTUAL_DIFF_ROW_HEIGHT;
+        revealRow(rowIndex);
+        const pane = paneFor(side);
+        const rowTop = displayIndexForLine(rowIndex, side) * VIRTUAL_DIFF_ROW_HEIGHT;
         const rowBottom = rowTop + VIRTUAL_DIFF_ROW_HEIGHT;
         let top = pane.scrollTop || 0;
         if (rowTop < top) top = rowTop;
@@ -1220,8 +1728,9 @@ function createVirtualDiffView(options) {
         );
     }
 
-    function handleKeyDown(side, event) {
+    function handleKeyDown(paneSide, event) {
         if (!model) return;
+        const side = sideForPane(paneSide);
         const command = !!(event.ctrlKey || event.metaKey);
         if (command && String(event.key).toLowerCase() === 'a') {
             if (typeof event.preventDefault === 'function') event.preventDefault();
@@ -1234,6 +1743,8 @@ function createVirtualDiffView(options) {
             return;
         }
 
+        // Alt with an arrow is left to the page, which steps between changes.
+        if (event.altKey) return;
         const supported = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
         if (!supported.includes(event.key)) return;
         if (typeof event.preventDefault === 'function') event.preventDefault();
@@ -1248,9 +1759,9 @@ function createVirtualDiffView(options) {
         else if (event.key === 'ArrowUp') focus = moveVertical(side, focus, -1);
         else if (event.key === 'ArrowDown') focus = moveVertical(side, focus, 1);
         else if (event.key === 'PageUp') {
-            focus = moveVertical(side, focus, -Math.max(1, Math.floor(paneElements[side].clientHeight / VIRTUAL_DIFF_ROW_HEIGHT)));
+            focus = moveVertical(side, focus, -Math.max(1, Math.floor(paneFor(side).clientHeight / VIRTUAL_DIFF_ROW_HEIGHT)));
         } else if (event.key === 'PageDown') {
-            focus = moveVertical(side, focus, Math.max(1, Math.floor(paneElements[side].clientHeight / VIRTUAL_DIFF_ROW_HEIGHT)));
+            focus = moveVertical(side, focus, Math.max(1, Math.floor(paneFor(side).clientHeight / VIRTUAL_DIFF_ROW_HEIGHT)));
         } else {
             const lineIndex = lineIndexForOffset(side, focus);
             const bounds = virtualLineBounds(sources[side], side === 'left' ? model.leftLineStarts : model.rightLineStarts, lineIndex);
@@ -1264,11 +1775,14 @@ function createVirtualDiffView(options) {
     }
 
     function sourceOffsetFromDataElement(side, element, event) {
-        const pane = paneElements[side];
+        const pane = paneFor(side);
         if (!element || !pane.contains(element)) return null;
         let current = element && element.nodeType === 3 ? element.parentElement : element;
         while (current && pane.contains(current)) {
             if (current.getAttribute && current.hasAttribute('data-source-start')) {
+                // In the unified view the offsets of a line belong to its own text.
+                const line = unified && typeof current.closest === 'function' ? current.closest('.diff-line') : null;
+                if (line && line.getAttribute('data-side') !== side) return null;
                 const start = Number(current.getAttribute('data-source-start'));
                 const end = Number(current.getAttribute('data-source-end'));
                 if (Number.isFinite(event.localSourceOffset)) {
@@ -1310,7 +1824,7 @@ function createVirtualDiffView(options) {
                 : null;
             const caretNode = caret && caret.offsetNode;
             const caretOffset = caret && caret.offset;
-            if (caretNode && paneElements[side].contains(caretNode) && Number.isFinite(caretOffset)) {
+            if (caretNode && paneFor(side).contains(caretNode) && Number.isFinite(caretOffset)) {
                 const fromCaret = sourceOffsetFromDataElement(side, caretNode, {
                     localSourceOffset: caretOffset,
                     clientX: event.clientX
@@ -1320,10 +1834,15 @@ function createVirtualDiffView(options) {
         }
         const fromData = sourceOffsetFromDataElement(side, event.target, event);
         if (fromData !== null) return fromData;
-        const pane = paneElements[side];
+        const pane = paneFor(side);
         const rect = pane.getBoundingClientRect ? pane.getBoundingClientRect() : { top: 0, left: 0 };
         const localY = (Number(event.clientY) || rect.top) - rect.top + (pane.scrollTop || 0);
-        const rowIndex = virtualClamp(Math.floor(localY / VIRTUAL_DIFF_ROW_HEIGHT), 0, model.rows.length - 1);
+        const displayIndex = virtualClamp(Math.floor(localY / VIRTUAL_DIFF_ROW_HEIGHT), 0, displayCount() - 1);
+        const rowIndex = modelRowAtDisplay(displayIndex);
+        if (unified && displayEntry(displayIndex) >= 0 && model.rows[rowIndex].type !== 'match'
+            && displaySideAt(displayIndex) !== side) {
+            return offsetBesideOtherSide(side, rowIndex);
+        }
         let lineIndex = sourceLineIndex(model.rows[rowIndex], side);
         if (lineIndex === null) lineIndex = nearestSourceLineForRow(side, rowIndex, 1);
         if (lineIndex === null) lineIndex = nearestSourceLineForRow(side, rowIndex, -1);
@@ -1332,6 +1851,36 @@ function createVirtualDiffView(options) {
         const bounds = virtualLineBounds(sources[side], starts, lineIndex);
         const localX = Math.max(0, (Number(event.clientX) || rect.left) - rect.left + (pane.scrollLeft || 0));
         return bounds.start + Math.min(bounds.end - bounds.start, Math.round(localX / estimatedCharacterWidth));
+    }
+
+    // A unified change shows its left lines above its right lines. A pointer
+    // over the lines of the other text stays at the edge of this text's lines.
+    function offsetBesideOtherSide(side, rowIndex) {
+        const change = changeIndexFrom(rowIndex + 1) - 1;
+        const starts = side === 'left' ? model.leftLineStarts : model.rightLineStarts;
+        if (side === 'left') {
+            const lineIndex = nearestSourceLineForRow('left', changeEnds[change] - 1, -1);
+            return lineIndex === null ? 0 : virtualLineBounds(sources.left, starts, lineIndex).end;
+        }
+        const lineIndex = nearestSourceLineForRow('right', changeStarts[change], 1);
+        return lineIndex === null ? sources.right.length : virtualLineBounds(sources.right, starts, lineIndex).start;
+    }
+
+    // The text a pointer position belongs to: the pane's own, or in the
+    // unified view the text of the line under the pointer.
+    function sideFromPointer(paneSide, event) {
+        if (!unified) return paneSide;
+        if (event.side === 'left' || event.side === 'right') return event.side;
+        if (Number.isFinite(event.clientY) && leftElement.getBoundingClientRect) {
+            const rect = leftElement.getBoundingClientRect();
+            const displayIndex = Math.floor((event.clientY - rect.top + (leftElement.scrollTop || 0))
+                / VIRTUAL_DIFF_ROW_HEIGHT);
+            if (displayIndex >= 0 && displayIndex < displayCount()) {
+                const entry = displayEntry(displayIndex);
+                if (entry >= 0 && model.rows[entry].type !== 'match') return displaySideAt(displayIndex);
+            }
+        }
+        return unifiedSide();
     }
 
     function isInteractiveTarget(target) {
@@ -1343,10 +1892,20 @@ function createVirtualDiffView(options) {
         return false;
     }
 
-    function handlePointerDown(side, event) {
+    function handlePointerDown(paneSide, event) {
         if (!model || isInteractiveTarget(event.target) || (event.button !== undefined && event.button !== 0)) return;
-        if (typeof paneElements[side].focus === 'function') paneElements[side].focus({ preventScroll: true });
+        const side = sideFromPointer(paneSide, event);
+        if (typeof paneFor(side).focus === 'function') paneFor(side).focus({ preventScroll: true });
         const offset = sourceOffsetFromEvent(side, event);
+        // A click inside a change also makes it the current change.
+        if (Number.isFinite(event.clientY) && paneFor(side).getBoundingClientRect) {
+            const rect = paneFor(side).getBoundingClientRect();
+            const displayIndex = Math.floor((event.clientY - rect.top + (paneFor(side).scrollTop || 0))
+                / VIRTUAL_DIFF_ROW_HEIGHT);
+            if (displayIndex >= 0 && displayIndex < displayCount() && displayEntry(displayIndex) >= 0) {
+                selectChangeAtRow(displayEntry(displayIndex));
+            }
+        }
         pointerSelection = { side: side, anchor: offset, pointerId: event.pointerId };
         latestPointerEvent = event;
         if (event.currentTarget && event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
@@ -1367,7 +1926,7 @@ function createVirtualDiffView(options) {
             anchorSourceOffset: pointerSelection.anchor,
             focusSourceOffset: offset
         }, false);
-        const pane = paneElements[pointerSelection.side];
+        const pane = paneFor(pointerSelection.side);
         const rect = pane.getBoundingClientRect ? pane.getBoundingClientRect() : null;
         if (rect && Number.isFinite(event.clientY) && (event.clientY < rect.top || event.clientY > rect.bottom)) {
             scheduleAutoscroll();
@@ -1384,7 +1943,7 @@ function createVirtualDiffView(options) {
             autoscrollFrame = null;
             if (!pointerSelection || !latestPointerEvent || expectedGeneration !== generation || destroyed) return;
             const side = pointerSelection.side;
-            const pane = paneElements[side];
+            const pane = paneFor(side);
             const rect = pane.getBoundingClientRect ? pane.getBoundingClientRect() : null;
             if (!rect || !Number.isFinite(latestPointerEvent.clientY)) return;
             let delta = 0;
@@ -1394,10 +1953,8 @@ function createVirtualDiffView(options) {
             pane.scrollTop = Math.max(0, (pane.scrollTop || 0) + delta);
             syncScrollTop(side);
             scheduleRender();
-            const rowIndex = virtualClamp(
-                Math.floor(((pane.scrollTop || 0) + (delta < 0 ? 0 : pane.clientHeight - 1)) / VIRTUAL_DIFF_ROW_HEIGHT),
-                0,
-                model.rows.length - 1
+            const rowIndex = modelRowAtDisplay(
+                Math.floor(((pane.scrollTop || 0) + (delta < 0 ? 0 : pane.clientHeight - 1)) / VIRTUAL_DIFF_ROW_HEIGHT)
             );
             let lineIndex = sourceLineIndex(model.rows[rowIndex], side);
             if (lineIndex === null) lineIndex = nearestSourceLineForRow(side, rowIndex, delta < 0 ? -1 : 1);
@@ -1433,12 +1990,23 @@ function createVirtualDiffView(options) {
         selection = null;
         rowByLine = { left: null, right: null };
         mountedRange = { first: 0, last: 0 };
+        changeStarts = new Int32Array(0);
+        changeEnds = new Int32Array(0);
+        changeFlags = new Uint8Array(0);
+        currentChange = -1;
+        folds = [];
+        displayRows = null;
+        rowToDisplay = null;
+        displaySides = null;
+        rowToDisplayRight = null;
+        changeDisplayStarts = null;
+        changeDisplayEnds = null;
         previewPageBySide.left.clear();
         previewPageBySide.right.clear();
         paneStructures = null;
         for (const side of ['left', 'right']) {
             const element = paneElements[side];
-            element.classList.remove('diff-mode');
+            element.classList.remove('diff-mode', 'diff-unified', 'diff-unified-hidden');
             restorePaneAttributes(element, originalAttributes[side]);
             element.scrollTop = 0;
             element.scrollLeft = 0;
@@ -1500,6 +2068,15 @@ function createVirtualDiffView(options) {
         getCopyText: getCopyText,
         getCleanCopyText: getCleanCopyText,
         copyToClipboardData: copyToClipboardData,
+        goToChange: goToChange,
+        getChangeSummary: getChangeSummary,
+        getChangeRows: getChangeRows,
+        getScrollAnchor: getScrollAnchor,
+        getChangeMarks: getChangeMarks,
+        setCollapsed: setCollapsed,
+        isCollapsed: function () { return collapsed; },
+        setUnified: setUnified,
+        isUnified: function () { return unified; },
         getMountedRange: function () { return { first: mountedRange.first, last: mountedRange.last }; },
         getMountedNodeCount: getMountedNodeCount
     };

@@ -24,6 +24,37 @@
         };
         const divider = document.getElementById('divider');
         const mainEl = document.querySelector('main');
+        const openButtons = {
+            left: document.getElementById('open-left'),
+            right: document.getElementById('open-right')
+        };
+        const openLabels = {
+            left: document.getElementById('open-left-label'),
+            right: document.getElementById('open-right-label')
+        };
+        const fileInput = document.getElementById('file-input');
+        const swapButton = document.getElementById('swap-button');
+        const changeNav = document.getElementById('change-nav');
+        const prevChangeButton = document.getElementById('prev-change');
+        const nextChangeButton = document.getElementById('next-change');
+        const changePosition = document.getElementById('change-position');
+        const changeStats = document.getElementById('change-stats');
+        const useButtons = {
+            left: document.getElementById('use-left'),
+            right: document.getElementById('use-right')
+        };
+        const undoButton = document.getElementById('undo-merge');
+        const MAX_UNDO_STEPS = 20;
+        const MAX_UNDO_CHARS = 8000000;
+        const resultTools = document.getElementById('result-tools');
+        const collapseToggle = document.getElementById('collapse-toggle');
+        const unifiedToggle = document.getElementById('unified-toggle');
+        const copyPatchButton = document.getElementById('copy-patch');
+        const downloadPatchButton = document.getElementById('download-patch');
+        const changeMap = document.getElementById('change-map');
+        const changeMapCanvas = document.getElementById('change-map-canvas');
+        const changeMapViewport = document.getElementById('change-map-viewport');
+        const ROW_HEIGHT = 21;
 
         for (const side of ['left', 'right']) {
             if (!panes[side].textContent.trim()) panes[side].replaceChildren();
@@ -35,6 +66,14 @@
                 right: panes.right.textContent || ''
             },
             mode: 'input',
+            model: null,
+            // File names are used for the diff headers only.
+            names: { left: null, right: null },
+            encodings: { left: null, right: null },
+            // Texts replaced by merging, newest last. Kept in memory only.
+            history: [],
+            // Where to show the next result, after a merge kept one side as it was.
+            pendingAnchor: null,
             // Not remembered between visits: a forgotten setting would hide
             // differences without the user noticing.
             ignoreWhitespace: false,
@@ -49,6 +88,10 @@
             cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
             stripInvisibleCharacters: window.DiffCore.stripInvisibleCharacters,
             findEquivalentRanges: window.DiffCore.findCanonicallyEquivalentRanges,
+            onViewChange: function () {
+                updateChangePosition();
+                scheduleChangeMap();
+            },
             onRenderingReduced: function (message) {
                 if (!renderNotice) return;
                 renderNotice.textContent = message;
@@ -165,6 +208,10 @@
                 setButtonVisible(copyButtons[side], false);
                 setButtonVisible(cleanCopyButtons[side], false);
             }
+            if (changeNav) changeNav.hidden = true;
+            if (resultTools) resultTools.hidden = true;
+            if (changeMap) changeMap.hidden = true;
+            changeMapRows = 0;
         }
 
         function showResultControls() {
@@ -172,6 +219,188 @@
                 setButtonVisible(copyButtons[side], true);
                 setButtonVisible(cleanCopyButtons[side], window.DiffCore.hasInvisibleCharacters(state.sources[side]));
             }
+            if (changeNav) changeNav.hidden = false;
+            if (resultTools) resultTools.hidden = false;
+            if (changeMap) changeMap.hidden = false;
+            // A diff of the exact texts exists whenever they are not identical,
+            // also when every difference is one the comparison sets aside.
+            const identical = state.sources.left === state.sources.right;
+            if (copyPatchButton) copyPatchButton.disabled = identical;
+            if (downloadPatchButton) downloadPatchButton.disabled = identical;
+            updateChangeStats();
+            updateChangePosition();
+            scheduleChangeMap();
+        }
+
+        function countText(count, noun) {
+            return count.toLocaleString() + ' ' + noun;
+        }
+
+        function updateChangeStats() {
+            if (!changeStats || !state.model) return;
+            const stats = state.model.stats;
+            const parts = [];
+            if (stats.modifiedRows > 0) parts.push(countText(stats.modifiedRows, 'changed'));
+            if (stats.missingRows > 0) parts.push(countText(stats.missingRows, 'removed'));
+            if (stats.addedRows > 0) parts.push(countText(stats.addedRows, 'added'));
+            changeStats.replaceChildren();
+            for (const part of parts) {
+                const item = document.createElement('span');
+                item.textContent = part;
+                changeStats.appendChild(item);
+            }
+            changeStats.title = parts.length ? 'Rows: ' + parts.join(', ') : '';
+        }
+
+        function updateChangePosition() {
+            if (!changePosition || state.mode !== 'diff') return;
+            const summary = view.getChangeSummary();
+            if (!summary.total) changePosition.textContent = 'no changes';
+            else if (summary.current < 0) {
+                changePosition.textContent = countText(summary.total, summary.total === 1 ? 'change' : 'changes');
+            } else {
+                changePosition.textContent = (summary.current + 1).toLocaleString() + ' / ' + summary.total.toLocaleString();
+            }
+            if (prevChangeButton) prevChangeButton.disabled = !summary.total;
+            if (nextChangeButton) nextChangeButton.disabled = !summary.total;
+            updateMergeControls();
+        }
+
+        function updateMergeControls() {
+            // Without a model the shown result is being replaced after a merge.
+            const selected = state.mode === 'diff' && !!state.model && view.getChangeSummary().current >= 0;
+            for (const side of ['left', 'right']) {
+                if (useButtons[side]) useButtons[side].disabled = !selected;
+            }
+            if (undoButton) undoButton.hidden = !state.history.length;
+        }
+
+        function clearHistory() {
+            state.history.length = 0;
+            updateMergeControls();
+        }
+
+        // Replaces one text after a merge or an undo. The other text is
+        // unchanged, so the result stays on screen and keeps its place.
+        function applyMergedSource(side, text) {
+            const anchor = state.mode === 'diff' ? view.getScrollAnchor(side === 'left' ? 'right' : 'left') : null;
+            controller.cancel({ invalidate: true, reason: 'merge' });
+            sourceRevision[side]++;
+            state.sources[side] = text;
+            if (state.mode !== 'diff') {
+                resetToInput();
+                compare();
+                return;
+            }
+            state.model = null;
+            state.pendingAnchor = anchor;
+            updateMergeControls();
+            compare(true);
+        }
+
+        function mergeCurrentChange(fromSide) {
+            if (state.mode !== 'diff' || !state.model) return;
+            const rows = view.getChangeRows(view.getChangeSummary().current);
+            if (!rows) return;
+            const target = fromSide === 'left' ? 'right' : 'left';
+            const text = window.DiffCore.mergeDiffRows(
+                state.sources.left, state.sources.right, state.model, rows.first, rows.last, fromSide
+            );
+            state.history.push({ side: target, text: state.sources[target] });
+            // The history is bounded in steps and in the text it keeps alive.
+            let kept = 0;
+            for (const entry of state.history) kept += entry.text.length;
+            while (state.history.length > 1
+                && (state.history.length > MAX_UNDO_STEPS || kept > MAX_UNDO_CHARS)) {
+                kept -= state.history.shift().text.length;
+            }
+            applyMergedSource(target, text);
+        }
+
+        function undoMerge() {
+            const entry = state.history.pop();
+            if (!entry) return;
+            applyMergedSource(entry.side, entry.text);
+        }
+
+        let changeMapFrame = null;
+        // The number of display rows the map was last drawn for, so that
+        // scrolling does not have to ask the view for its changes again.
+        let changeMapRows = 0;
+
+        function scheduleChangeMap() {
+            if (!changeMap || changeMapFrame !== null) return;
+            changeMapFrame = window.requestAnimationFrame(function () {
+                changeMapFrame = null;
+                drawChangeMap();
+                updateChangeMapViewport();
+            });
+        }
+
+        function themeColor(name, fallback) {
+            const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return value || fallback;
+        }
+
+        function drawChangeMap() {
+            if (!changeMapCanvas || state.mode !== 'diff' || changeMap.hidden) return;
+            const context = changeMapCanvas.getContext('2d');
+            if (!context) return;
+            const scale = window.devicePixelRatio || 1;
+            const width = Math.max(1, Math.round(changeMap.clientWidth * scale));
+            const height = Math.max(1, Math.round(changeMap.clientHeight * scale));
+            if (changeMapCanvas.width !== width) changeMapCanvas.width = width;
+            if (changeMapCanvas.height !== height) changeMapCanvas.height = height;
+            context.clearRect(0, 0, width, height);
+            const marks = view.getChangeMarks();
+            changeMapRows = marks.rowCount;
+            if (!marks.rowCount) return;
+            // Short results keep the row height of the panes; long ones are
+            // scaled to the height of the map.
+            const rowHeight = Math.min(ROW_HEIGHT * scale, height / marks.rowCount);
+            const minimum = Math.max(2, Math.round(2 * scale));
+            const half = Math.floor(width / 2);
+            const changed = themeColor('--diff-mismatch', '#dc2626');
+            const moved = themeColor('--diff-moved', '#7c3aed');
+            // One column has no left and right half to tell apart.
+            const wholeWidth = view.isUnified();
+            for (let i = 0; i < marks.starts.length; i++) {
+                const top = Math.floor(marks.starts[i] * rowHeight);
+                const size = Math.max(minimum, Math.ceil((marks.ends[i] - marks.starts[i]) * rowHeight));
+                context.fillStyle = (marks.flags[i] & 4) ? moved : changed;
+                if (wholeWidth) {
+                    context.fillRect(1, top, width - 2, size);
+                    continue;
+                }
+                if (marks.flags[i] & 1) context.fillRect(1, top, half - 1, size);
+                if (marks.flags[i] & 2) context.fillRect(half + 1, top, width - half - 2, size);
+            }
+        }
+
+        function changeMapScale() {
+            const mapHeight = changeMap.clientHeight;
+            if (!changeMapRows || !mapHeight) return null;
+            return { rowHeight: Math.min(ROW_HEIGHT, mapHeight / changeMapRows), mapHeight: mapHeight };
+        }
+
+        function updateChangeMapViewport() {
+            if (!changeMapViewport || state.mode !== 'diff' || changeMap.hidden) return;
+            const mapScale = changeMapScale();
+            if (!mapScale) return;
+            const ratio = mapScale.rowHeight / ROW_HEIGHT;
+            const top = Math.min(mapScale.mapHeight, panes.left.scrollTop * ratio);
+            const height = Math.min(mapScale.mapHeight - top, panes.left.clientHeight * ratio);
+            changeMapViewport.style.top = top + 'px';
+            changeMapViewport.style.height = Math.max(0, height) + 'px';
+        }
+
+        function scrollFromChangeMap(event) {
+            const mapScale = changeMapScale();
+            if (!mapScale) return;
+            const rect = changeMap.getBoundingClientRect();
+            const row = (event.clientY - rect.top) / mapScale.rowHeight;
+            // Scrolling the pane makes the view follow and keeps both sides in step.
+            panes.left.scrollTop = Math.max(0, (row * ROW_HEIGHT) - (panes.left.clientHeight / 2));
         }
 
         function updateEmptyState() {
@@ -182,6 +411,8 @@
 
         function resetToInput() {
             state.mode = 'input';
+            state.model = null;
+            state.pendingAnchor = null;
             view.resetToInput(state.sources);
             hideResultControls();
             hideRenderNotice();
@@ -191,8 +422,11 @@
         function showResult(model) {
             try {
                 state.mode = 'diff';
+                state.model = model;
                 hideRenderNotice();
-                view.setResult({ sources: state.sources, model: model, selection: null });
+                const anchor = state.pendingAnchor;
+                state.pendingAnchor = null;
+                view.setResult({ sources: state.sources, model: model, selection: null, anchor: anchor });
             } catch (err) {
                 showComparisonError({
                     message: err && err.message ? err.message : 'The comparison result could not be displayed.'
@@ -220,7 +454,8 @@
             });
         }
 
-        function compare() {
+        // keepResult leaves the shown result in place until the new one arrives.
+        function compare(keepResult) {
             const leftText = state.sources.left;
             const rightText = state.sources.right;
 
@@ -243,9 +478,11 @@
             }
 
             const classification = window.DiffCore.classifyDiffWork(leftText, rightText, scan);
-            hideCounter();
-            hideResultControls();
-            hideRenderNotice();
+            if (!keepResult) {
+                hideCounter();
+                hideResultControls();
+                hideRenderNotice();
+            }
             controller.start({
                 left: leftText,
                 right: rightText,
@@ -255,11 +492,69 @@
             });
         }
 
-        function replaceSource(side, text) {
+        // Each new text for a side makes a file still being read for it stale.
+        const sourceRevision = { left: 0, right: 0 };
+
+        function replaceSource(side, text, name, encoding) {
             controller.cancel({ invalidate: true, reason: 'input-changed' });
+            sourceRevision[side]++;
             state.sources[side] = text;
+            state.names[side] = name || null;
+            state.encodings[side] = encoding || null;
+            clearHistory();
+            updateFileLabels();
             resetToInput();
             compare();
+        }
+
+        function updateFileLabels() {
+            for (const side of ['left', 'right']) {
+                const name = state.names[side];
+                const encoding = state.encodings[side];
+                const note = encoding && encoding !== 'UTF-8' ? ' (' + encoding + ')' : '';
+                if (openLabels[side]) openLabels[side].textContent = name ? name + note : 'open ' + side;
+                if (!openButtons[side]) continue;
+                openButtons[side].classList.toggle('has-file', !!name);
+                openButtons[side].title = (name ? name + note + '. ' : '')
+                    + 'Open a file as the ' + side + ' text. It is read in your browser and never uploaded.';
+            }
+        }
+
+        function hasFiles(dataTransfer) {
+            if (!dataTransfer) return false;
+            if (dataTransfer.files && dataTransfer.files.length) return true;
+            return !!dataTransfer.types && Array.from(dataTransfer.types).indexOf('Files') !== -1;
+        }
+
+        // Reads a local file into one side. The bytes stay in this page.
+        function readFile(side, file) {
+            if (!file) return;
+            if (file.size > window.DiffCore.maxFileBytes) {
+                showProgress('"' + file.name + '" is too large to compare.');
+                return;
+            }
+            const revision = ++sourceRevision[side];
+            file.arrayBuffer().then(function (buffer) {
+                if (revision !== sourceRevision[side]) return;
+                const decoded = window.DiffCore.decodeTextBytes(new Uint8Array(buffer));
+                if (!decoded.ok) {
+                    showProgress('"' + file.name + '": ' + decoded.message);
+                    return;
+                }
+                replaceSource(side, decoded.text, file.name, decoded.encoding);
+            }).catch(function () {
+                if (revision === sourceRevision[side]) showProgress('"' + file.name + '" could not be read.');
+            });
+        }
+
+        // One dropped file fills the pane it lands on; two fill both sides in order.
+        function readDroppedFiles(side, files) {
+            if (files.length >= 2) {
+                readFile('left', files[0]);
+                readFile('right', files[1]);
+            } else {
+                readFile(side, files[0]);
+            }
         }
 
         function bindInput(side) {
@@ -273,20 +568,187 @@
                 event.preventDefault();
                 replaceSource(side, event.clipboardData.getData('text/plain'));
             });
+            element.addEventListener('dragover', function (event) {
+                if (!hasFiles(event.dataTransfer)) return;
+                // Without this a pane showing a result does not accept a drop.
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+                element.classList.add('drag-over');
+            });
+            element.addEventListener('dragleave', function () {
+                element.classList.remove('drag-over');
+            });
             element.addEventListener('drop', function (event) {
+                element.classList.remove('drag-over');
                 if (!event.dataTransfer) return;
                 event.preventDefault();
+                const files = event.dataTransfer.files;
+                if (files && files.length) {
+                    readDroppedFiles(side, files);
+                    return;
+                }
                 replaceSource(side, event.dataTransfer.getData('text/plain'));
             });
             element.addEventListener('input', function () {
                 if (state.mode !== 'input') return;
+                sourceRevision[side]++;
                 state.sources[side] = element.textContent || '';
+                state.names[side] = null;
+                state.encodings[side] = null;
+                clearHistory();
+                updateFileLabels();
                 compare();
             });
+            element.addEventListener('scroll', updateChangeMapViewport, { passive: true });
         }
 
         bindInput('left');
         bindInput('right');
+
+        // A file dropped beside the panes must not replace the page.
+        for (const type of ['dragover', 'drop']) {
+            document.addEventListener(type, function (event) {
+                if (!event.defaultPrevented && hasFiles(event.dataTransfer)) event.preventDefault();
+            });
+        }
+
+        let fileInputSide = 'left';
+        for (const side of ['left', 'right']) {
+            if (!openButtons[side] || !fileInput) continue;
+            openButtons[side].addEventListener('click', function () {
+                fileInputSide = side;
+                fileInput.value = '';
+                fileInput.click();
+            });
+        }
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                if (fileInput.files && fileInput.files.length) readFile(fileInputSide, fileInput.files[0]);
+            });
+        }
+
+        if (swapButton) {
+            swapButton.addEventListener('click', function () {
+                if (!state.sources.left.length && !state.sources.right.length) return;
+                controller.cancel({ invalidate: true, reason: 'swap' });
+                for (const values of [state.sources, state.names, state.encodings, sourceRevision]) {
+                    const left = values.left;
+                    values.left = values.right;
+                    values.right = left;
+                }
+                sourceRevision.left++;
+                sourceRevision.right++;
+                clearHistory();
+                updateFileLabels();
+                resetToInput();
+                hideCounter();
+                hideProgress();
+                compare();
+            });
+        }
+
+        function goToChange(direction) {
+            if (state.mode !== 'diff') return;
+            view.goToChange(direction);
+        }
+
+        if (prevChangeButton) prevChangeButton.addEventListener('click', function () { goToChange('previous'); });
+        if (nextChangeButton) nextChangeButton.addEventListener('click', function () { goToChange('next'); });
+
+        for (const side of ['left', 'right']) {
+            if (useButtons[side]) useButtons[side].addEventListener('click', function () { mergeCurrentChange(side); });
+        }
+        if (undoButton) undoButton.addEventListener('click', undoMerge);
+
+        document.addEventListener('keydown', function (event) {
+            const overlay = document.getElementById('info-overlay');
+            if (overlay && overlay.classList.contains('open')) return;
+            if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+                && String(event.key).toLowerCase() === 'z' && state.history.length) {
+                event.preventDefault();
+                undoMerge();
+                return;
+            }
+            if (state.mode !== 'diff' || event.ctrlKey || event.metaKey) return;
+            let direction = null;
+            if (event.altKey && !event.shiftKey && event.key === 'ArrowDown') direction = 'next';
+            else if (event.altKey && !event.shiftKey && event.key === 'ArrowUp') direction = 'previous';
+            else if (!event.altKey && event.key === 'F7') direction = event.shiftKey ? 'previous' : 'next';
+            if (!direction) return;
+            event.preventDefault();
+            goToChange(direction);
+        });
+
+        if (unifiedToggle) {
+            unifiedToggle.addEventListener('click', function () {
+                const unified = view.setUnified(!view.isUnified());
+                unifiedToggle.setAttribute('aria-pressed', String(unified));
+            });
+        }
+
+        if (collapseToggle) {
+            collapseToggle.addEventListener('click', function () {
+                const collapsed = view.setCollapsed(!view.isCollapsed());
+                collapseToggle.setAttribute('aria-pressed', String(collapsed));
+            });
+        }
+
+        function createPatch() {
+            if (!state.model) return '';
+            return window.DiffCore.createUnifiedDiff(state.sources.left, state.sources.right, state.model, {
+                leftName: state.names.left || 'left',
+                rightName: state.names.right || 'right'
+            });
+        }
+
+        if (copyPatchButton) {
+            copyPatchButton.addEventListener('click', function () {
+                const patch = createPatch();
+                if (patch) copyText(patch, 'diff', copyPatchButton);
+            });
+        }
+
+        if (downloadPatchButton) {
+            downloadPatchButton.addEventListener('click', function () {
+                const patch = createPatch();
+                if (!patch) return;
+                // The file is made from a Blob in this page; nothing is sent anywhere.
+                const url = URL.createObjectURL(new Blob([patch], { type: 'text/plain;charset=utf-8' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = (state.names.right || state.names.left || 'comparison') + '.patch';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+                showCopyFeedback(downloadPatchButton);
+            });
+        }
+
+        if (changeMap) {
+            let mapPointerId = null;
+            changeMap.addEventListener('pointerdown', function (event) {
+                if (event.button !== 0 || state.mode !== 'diff') return;
+                mapPointerId = event.pointerId;
+                changeMap.setPointerCapture(event.pointerId);
+                scrollFromChangeMap(event);
+                event.preventDefault();
+            });
+            changeMap.addEventListener('pointermove', function (event) {
+                if (event.pointerId === mapPointerId) scrollFromChangeMap(event);
+            });
+            const releaseMap = function (event) {
+                if (event.pointerId === mapPointerId) mapPointerId = null;
+            };
+            changeMap.addEventListener('pointerup', releaseMap);
+            changeMap.addEventListener('pointercancel', releaseMap);
+            window.addEventListener('resize', scheduleChangeMap);
+            // The marks use the theme colours.
+            new MutationObserver(scheduleChangeMap).observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-theme']
+            });
+        }
 
         function bindOptionToggle(button, option) {
             if (!button) return;
@@ -311,6 +773,13 @@
                 controller.cancel({ invalidate: true, reason: 'clear' });
                 state.sources.left = '';
                 state.sources.right = '';
+                for (const side of ['left', 'right']) {
+                    sourceRevision[side]++;
+                    state.names[side] = null;
+                    state.encodings[side] = null;
+                }
+                clearHistory();
+                updateFileLabels();
                 resetToInput();
                 hideCounter();
                 hideProgress();

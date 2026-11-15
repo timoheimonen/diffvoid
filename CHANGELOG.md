@@ -5,6 +5,38 @@ All notable changes to diffvoid.com are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-11-15
+
+### Added
+
+- Local files: drop a file on a pane or use **open left** / **open right**.
+  Two files dropped together fill both sides. Files are read in the browser
+  and never uploaded. UTF-8 and UTF-16 are recognised, other bytes are read as
+  Windows-1252, and binary files are refused.
+- Change navigation: arrow buttons, `Alt+Down` / `Alt+Up` and `F7` /
+  `Shift+F7` step through the changes. The current change is marked in the
+  gutter and counted, and a click inside a change selects it.
+- Overview map beside the panes that marks every change over the whole result
+  and the part on screen. Click or drag it to jump.
+- **changes only** toggle: folds unchanged lines away and keeps three lines of
+  context around each change. A fold opens when clicked.
+- **unified** toggle: shows both texts in one column, the removed lines of a
+  change above its added lines, with old and new line numbers.
+- Merging: **use left** and **use right** keep one version of the selected
+  change on both sides. **undo** or `Ctrl+Z` takes merges back.
+- **copy diff** and **save .patch**: the differences as a standard unified
+  diff that applies to the left text and gives the right text.
+- **Swap** button that exchanges the two sides.
+- A summary of changed, removed and added rows in the toolbar.
+
+### Changed
+
+- The service is called diffvoid.com everywhere: wordmark, page titles, help
+  dialog and static pages.
+- The help dialog, the About page and the README describe the new features,
+  and the privacy policy says that opened files, patches and the undo history
+  stay in the browser.
+
 ## [2.2.0] - 2026-10-15
 
 ### Added
